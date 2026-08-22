@@ -5,7 +5,7 @@
 | 0 — Foundation | Architecture, lifecycle, identity, migrations, API contract, web shell, deployment/CI scaffolds | Tested portable server foundation; no fake media features |
 | 1 — Identity and access | Owner bootstrap, login, rotating device sessions, RBAC, audit | Secure offline-capable authentication; recovery remains future work |
 | 2 — Libraries and scanning | Roots, guarded scanner, FFprobe adapter, persisted jobs, normalized physical inventory | Complete: real files discovered with progress |
-| 3 — Metadata and artwork | Providers, NFO/embedded data, provenance, artwork history | Provider-neutral enrichment |
+| 3 — Metadata and artwork | Logical movies/TV, deterministic TMDb identification, provenance, artwork cache | Identified local-first browsing without playback |
 | 4 — Playback | Capabilities, explainable decision engine, direct play/remux/HLS lifecycle | Browser playback with tested reasons |
 | 5 — Media experience | Movies/TV, progress, search, collections, home rows | Credible local video experience |
 | 6 — Android ecosystem | Compose phone/tablet and TV clients with Media3 | Native Android and couch playback |

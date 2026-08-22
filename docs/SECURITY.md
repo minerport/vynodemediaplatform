@@ -1,5 +1,7 @@
 # Security
 
+Metadata credentials are accepted only by capability-gated owner/admin routes, stored outside ordinary settings responses, and never logged or redisplayed. Provider clients bound time and response size and constrain redirects. Artwork writes are confined to the application-controlled config cache; media roots remain read-only inputs.
+
 Passwords are Argon2id hashes. Tokens, passwords, hashes, and authorization headers are excluded from API errors, audit metadata, and request logs. Refresh digests and append-oriented audit rows live in SQLite; the signing key is a restrictive file under `/config`. No secrets are baked into images.
 
 Browser refresh uses an HttpOnly SameSite=Strict cookie, Secure on HTTPS, with a narrow auth path. Access credentials remain in memory. Unsafe requests with an Origin must match the request origin or exact configured `VYNODE_ALLOWED_ORIGIN`; wildcards and malformed origins are rejected. Preflight responses are restricted and credentialed wildcard CORS is never emitted. This combines SameSite with Origin-based CSRF defense.

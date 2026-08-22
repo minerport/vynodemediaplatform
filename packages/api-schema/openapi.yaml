@@ -73,6 +73,43 @@ paths:
     get: { operationId: getPhysicalMediaFile, summary: Requires media.inventory.view, security: [{ bearerAuth: [] }], parameters: [{ name: fileId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: "Physical file, technical probe data, normalized streams, and preliminary filename hints" } } }
   /api/v1/admin/system/media-probe:
     get: { operationId: getMediaProbeCapability, summary: Requires security.view, security: [{ bearerAuth: [] }], responses: { '200': { description: Safe FFprobe availability and version } } }
+  /api/v1/movies:
+    get: { operationId: listMovies, summary: Requires logical.media.view; local and offline, security: [{ bearerAuth: [] }], responses: { '200': { description: Identified logical movie page } } }
+  /api/v1/movies/{id}:
+    get: { operationId: getMovie, summary: Requires logical.media.view; paths are excluded, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Movie metadata and safe physical version labels } } }
+  /api/v1/movies/{id}/refresh:
+    post: { operationId: refreshMovieMetadata, summary: Requires metadata.manage; preserves association and manual artwork, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: Movie provider fields refreshed } } }
+  /api/v1/shows:
+    get: { operationId: listShows, summary: Requires logical.media.view; local and offline, security: [{ bearerAuth: [] }], responses: { '200': { description: Identified logical show page } } }
+  /api/v1/shows/{id}:
+    get: { operationId: getShow, summary: Requires logical.media.view, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: "Show, seasons, episodes, and availability" } } }
+  /api/v1/shows/{id}/refresh:
+    post: { operationId: refreshShowMetadata, summary: Requires metadata.manage; preserves association and manual artwork, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: Show provider fields refreshed } } }
+  /api/v1/search:
+    get: { operationId: searchLocalMedia, summary: Local logical-title search; no provider dependency, security: [{ bearerAuth: [] }], parameters: [{ name: q, in: query, schema: { type: string } }], responses: { '200': { description: Matching local movies and shows } } }
+  /api/v1/admin/metadata/provider:
+    get: { operationId: getMetadataProviderStatus, summary: Requires metadata.provider.manage; secret is never returned, security: [{ bearerAuth: [] }], responses: { '200': { description: TMDb configuration status } } }
+    put: { operationId: configureMetadataProvider, summary: Requires metadata.provider.manage, security: [{ bearerAuth: [] }], responses: { '200': { description: Configuration stored under application config } } }
+  /api/v1/admin/metadata/provider/test:
+    post: { operationId: testMetadataProvider, summary: Requires metadata.provider.manage, security: [{ bearerAuth: [] }], responses: { '200': { description: Credential and connectivity accepted }, '503': { description: Provider unavailable } } }
+  /api/v1/admin/metadata/provider/search:
+    get: { operationId: searchMetadataProvider, summary: Requires metadata.manage; distinct from local search, security: [{ bearerAuth: [] }], responses: { '200': { description: Normalized provider candidates } } }
+  /api/v1/admin/metadata/unmatched:
+    get: { operationId: listUnmatchedMedia, summary: Requires metadata.manage; includes physical names only for administrators, security: [{ bearerAuth: [] }], responses: { '200': { description: Review queue with diagnostics } } }
+  /api/v1/admin/metadata/files/{fileId}/match:
+    post: { operationId: manuallyMatchMedia, summary: Requires metadata.manage; supports movie and multi-episode TV association, security: [{ bearerAuth: [] }], parameters: [{ name: fileId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Logical association created or reused } } }
+  /api/v1/admin/metadata/files/{fileId}/unmatch:
+    post: { operationId: unmatchMedia, summary: Requires metadata.manage; physical inventory and user file remain unchanged, security: [{ bearerAuth: [] }], parameters: [{ name: fileId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: Association removed and orphan retained } } }
+  /api/v1/libraries/{libraryId}/identify:
+    post: { operationId: identifyLibrary, summary: Requires metadata.manage; queues an explicit background identification stage, security: [{ bearerAuth: [] }], parameters: [{ $ref: '#/components/parameters/LibraryId' }], responses: { '202': { description: Metadata job queued } } }
+  /api/v1/libraries/{libraryId}/metadata-jobs/{jobId}:
+    get: { operationId: getMetadataJob, summary: Requires metadata.manage, security: [{ bearerAuth: [] }], parameters: [{ $ref: '#/components/parameters/LibraryId' }, { $ref: '#/components/parameters/JobId' }], responses: { '200': { description: Identification counters and state } } }
+  /api/v1/{entityType}/{id}/artwork:
+    get: { operationId: listArtwork, summary: Lists logical artwork without exposing cache paths, security: [{ bearerAuth: [] }], parameters: [{ name: entityType, in: path, required: true, schema: { type: string, enum: [movies, shows] } }, { name: id, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Artwork candidates and selection state } } }
+  /api/v1/{entityType}/{id}/artwork/{artworkId}/select:
+    post: { operationId: selectArtwork, summary: Requires metadata.manage; manual selection survives refresh, security: [{ bearerAuth: [] }], parameters: [{ name: entityType, in: path, required: true, schema: { type: string, enum: [movies, shows] } }, { name: id, in: path, required: true, schema: { type: string, format: uuid } }, { name: artworkId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: Artwork selected } } }
+  /api/v1/artwork/{artworkId}/content:
+    get: { operationId: getArtworkContent, summary: Streams a controlled cached image with ETag, security: [{ bearerAuth: [] }], parameters: [{ name: artworkId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Cached image bytes }, '304': { description: Not modified } } }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }

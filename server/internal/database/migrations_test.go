@@ -18,10 +18,18 @@ func TestMigrationStartup(t *testing.T) {
 	if err := store.Migrate(context.Background()); err != nil {
 		t.Fatalf("migrations must be idempotent: %v", err)
 	}
-	for _, table := range []string{"server_settings", "users", "devices", "sessions", "audit_events"} {
+	for _, table := range []string{"server_settings", "users", "devices", "sessions", "audit_events", "movies", "shows", "seasons", "episodes", "media_associations", "external_ids", "genres", "artwork", "metadata_jobs"} {
 		var name string
 		if err := store.DB.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&name); err != nil {
 			t.Fatalf("missing table %s: %v", table, err)
 		}
+	}
+	var integrity string
+	if err := store.DB.QueryRow("PRAGMA integrity_check").Scan(&integrity); err != nil || integrity != "ok" {
+		t.Fatalf("integrity=%q err=%v", integrity, err)
+	}
+	var violations int
+	if err := store.DB.QueryRow("SELECT COUNT(*) FROM pragma_foreign_key_check").Scan(&violations); err != nil || violations != 0 {
+		t.Fatalf("foreign key violations=%d err=%v", violations, err)
 	}
 }

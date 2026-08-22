@@ -1,5 +1,7 @@
 # Platform support
 
+Logical metadata and cached artwork use paths below the configured application-data directory on Windows and `/config` in containers/Unraid. Provider outages do not prevent startup, scanning, authentication, or local browsing.
+
 **SUPPORTED** is implemented and validated; **PLANNED** has an explicit roadmap;
 **FUTURE** is intentionally deferred and subject to platform evaluation.
 
