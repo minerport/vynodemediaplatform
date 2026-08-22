@@ -28,6 +28,9 @@ type Config struct {
 	ProbeConcurrency  int
 	FFmpegPath        string
 	PlaybackPipelines int
+	TranscodeDir      string
+	VideoTranscodes   int
+	RemoteBitrate     int64
 }
 
 func Load() (Config, error) {
@@ -47,6 +50,9 @@ func Load() (Config, error) {
 		ProbeConcurrency:  2,
 		FFmpegPath:        envOr("VYNODE_FFMPEG_PATH", ""),
 		PlaybackPipelines: 2,
+		TranscodeDir:      envOr("VYNODE_TRANSCODE_DIR", "./data/transcode"),
+		VideoTranscodes:   1,
+		RemoteBitrate:     20_000_000,
 	}
 	if strings.TrimSpace(cfg.ConfigDir) == "" {
 		return Config{}, fmt.Errorf("VYNODE_CONFIG_DIR must not be empty")
@@ -95,6 +101,20 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("VYNODE_PLAYBACK_PIPELINES must be between 1 and 16")
 		}
 		cfg.PlaybackPipelines = value
+	}
+	if raw := os.Getenv("VYNODE_VIDEO_TRANSCODES"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > 8 {
+			return Config{}, fmt.Errorf("VYNODE_VIDEO_TRANSCODES must be between 1 and 8")
+		}
+		cfg.VideoTranscodes = value
+	}
+	if raw := os.Getenv("VYNODE_REMOTE_BITRATE"); raw != "" {
+		value, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || value < 500_000 || value > 200_000_000 {
+			return Config{}, fmt.Errorf("VYNODE_REMOTE_BITRATE must be between 500000 and 200000000")
+		}
+		cfg.RemoteBitrate = value
 	}
 	return cfg, nil
 }

@@ -1,5 +1,7 @@
 # Security
 
+HLS playlists and every fMP4 resource use the existing HttpOnly playback credential and session ownership checks. Generated URLs never contain source paths, traversal is rejected, and responses are private `no-store`.
+
 Generated playback uses structured FFmpeg arguments and never a shell. Clients may select stored track IDs and a bounded timestamp but cannot supply filters or flags. Diagnostics are bounded and redact paths; media and subtitle credentials are route-scoped, HttpOnly, SameSite, and bound to an active login session.
 
 Metadata credentials are accepted only by capability-gated owner/admin routes, stored outside ordinary settings responses, and never logged or redisplayed. Provider clients bound time and response size and constrain redirects. Artwork writes are confined to the application-controlled config cache; media roots remain read-only inputs.

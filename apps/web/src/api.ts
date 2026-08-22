@@ -239,12 +239,14 @@ export type PlaybackSession = {
   logicalId: string;
   selectedVersion: PlaybackVersion;
   decision: {
-    mode: "DIRECT_PLAY" | "DIRECT_STREAM" | "AUDIO_TRANSCODE" | "UNSUPPORTED";
+    mode: "DIRECT_PLAY" | "DIRECT_STREAM" | "AUDIO_TRANSCODE" | "VIDEO_TRANSCODE" | "UNSUPPORTED";
     reasons: PlaybackReason[];
     plan: {
-      video: { action: string; sourceCodec?: string };
+      video: { action: string; sourceCodec?: string; targetCodec?: string; targetWidth?: number; targetHeight?: number; targetBitrate?: number; encoder?: string };
       audio: { action: string; sourceCodec?: string; targetCodec?: string };
       container: { source: string; target: string };
+      quality?: string;
+      backend?: {requested:string;actual:string;fallbackReason?:string};
     };
   };
   state: string;
@@ -252,6 +254,8 @@ export type PlaybackSession = {
   duration: number;
   resumePosition: number;
   mediaUrl?: string;
+  hlsUrl?: string;
+  availableQualities?: Array<{id:string;label:string;maxWidth:number;maxHeight:number;targetVideoBitrate:number}>;
   subtitleUrl?: string;
 };
 export type ContinueItem = {
@@ -501,6 +505,8 @@ export const api = {
     resume = true,
     selectedAudioTrackId = "",
     selectedSubtitleTrackId = "",
+    qualityId = "",
+    startPosition = 0,
   ) =>
     call<PlaybackSession>("/api/v1/playback/sessions", {
       method: "POST",
@@ -511,6 +517,8 @@ export const api = {
         resume,
         selectedAudioTrackId,
         selectedSubtitleTrackId,
+        qualityId,
+        startPosition,
         capabilities: browserCapabilities(),
       }),
     }),

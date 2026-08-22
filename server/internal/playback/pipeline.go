@@ -16,13 +16,17 @@ var ErrCapacity = errors.New("playback capacity reached")
 var ErrPipelineUnavailable = errors.New("ffmpeg unavailable")
 
 type FFmpegCapabilities struct {
-	Available bool     `json:"available"`
-	Version   string   `json:"version,omitempty"`
-	Muxers    []string `json:"muxers"`
-	Encoders  []string `json:"encoders"`
-	Decoders  []string `json:"decoders"`
-	Active    int      `json:"activePipelines"`
-	Maximum   int      `json:"maximumPipelines"`
+	Available    bool              `json:"available"`
+	Version      string            `json:"version,omitempty"`
+	Muxers       []string          `json:"muxers"`
+	Encoders     []string          `json:"encoders"`
+	Decoders     []string          `json:"decoders"`
+	Active       int               `json:"activePipelines"`
+	Maximum      int               `json:"maximumPipelines"`
+	ActiveVideo  int               `json:"activeVideoTranscodes"`
+	MaximumVideo int               `json:"maximumVideoTranscodes"`
+	Filters      []string          `json:"filters"`
+	Hardware     []HardwareBackend `json:"hardwareBackends"`
 }
 type PipelineRequest struct {
 	SessionID, InstanceID, SourcePath string
@@ -76,7 +80,7 @@ func NewFFmpeg(path string, maximum int) *FFmpegPipeline {
 	return p
 }
 func (p *FFmpegPipeline) detect() FFmpegCapabilities {
-	c := FFmpegCapabilities{Muxers: []string{}, Encoders: []string{}, Decoders: []string{}}
+	c := FFmpegCapabilities{Muxers: []string{}, Encoders: []string{}, Decoders: []string{}, Filters: []string{}, Hardware: []HardwareBackend{}}
 	if p.path == "" {
 		return c
 	}
@@ -93,7 +97,7 @@ func (p *FFmpegPipeline) detect() FFmpegCapabilities {
 		flag  string
 		dst   *[]string
 		names []string
-	}{{"-muxers", &c.Muxers, []string{"mp4", "webvtt"}}, {"-encoders", &c.Encoders, []string{"aac", "webvtt"}}, {"-decoders", &c.Decoders, []string{"h264", "aac", "ac3", "subrip"}}} {
+	}{{"-muxers", &c.Muxers, []string{"mp4", "hls", "webvtt"}}, {"-encoders", &c.Encoders, []string{"aac", "libx264", "h264_nvenc", "h264_qsv", "h264_vaapi", "h264_amf", "h264_videotoolbox", "webvtt"}}, {"-decoders", &c.Decoders, []string{"h264", "hevc", "vp9", "av1", "aac", "ac3", "subrip"}}, {"-filters", &c.Filters, []string{"scale", "format", "zscale", "tonemap"}}} {
 		o, _ := exec.CommandContext(ctx, p.path, "-hide_banner", x.flag).CombinedOutput()
 		lower := strings.ToLower(string(o))
 		for _, n := range x.names {
@@ -102,6 +106,7 @@ func (p *FFmpegPipeline) detect() FFmpegCapabilities {
 			}
 		}
 	}
+	c.Hardware = detectHardware(c)
 	return c
 }
 func (p *FFmpegPipeline) Capabilities() FFmpegCapabilities {

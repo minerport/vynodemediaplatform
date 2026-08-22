@@ -67,6 +67,57 @@ func TestPipelineDecisionHierarchy(t *testing.T) {
 	}
 }
 
+func TestVideoTranscodePolicyAndHierarchy(t *testing.T) {
+	p := browser()
+	p.SchemaVersion = 2
+	p.FragmentedMP4 = true
+	hevc := Version{ID: "hevc", Container: "mkv", VideoCodec: "hevc", AudioTracks: []Track{{Codec: "aac", Default: true}}, Width: 1920, Height: 1080, Bitrate: 12_000_000, HDR: "SDR", Available: true}
+	d := DecideWithPolicy(hevc, p, "", "", "720p", 5_000_000)
+	if d.Mode != VideoTranscode || d.Plan.Video.TargetCodec != "h264" || d.Plan.Video.TargetHeight != 720 || d.Plan.Video.PixelFormat != "yuv420p" {
+		t.Fatalf("video=%+v", d)
+	}
+	if d.Plan.Video.TargetWidth != 1280 || d.Plan.Video.TargetBitrate != 4_000_000 {
+		t.Fatalf("quality=%+v", d.Plan.Video)
+	}
+	compatible := Version{ID: "720", Container: "mp4", VideoCodec: "h264", AudioTracks: []Track{{Codec: "aac", Default: true}}, Width: 1280, Height: 720, Bitrate: 3_000_000, HDR: "SDR", Available: true}
+	v, chosen := SelectPolicy([]Version{hevc, compatible}, p, "", "", "", "720p", 5_000_000)
+	if v.ID != "720" || chosen.Mode != DirectPlay {
+		t.Fatalf("unnecessary transcode: %s %+v", v.ID, chosen)
+	}
+}
+
+func TestBitrateResolutionAndEvenScaling(t *testing.T) {
+	p := browser()
+	p.SchemaVersion = 2
+	p.FragmentedMP4 = true
+	v := Version{ID: "high", Container: "mp4", VideoCodec: "h264", AudioTracks: []Track{{Codec: "aac"}}, Width: 1919, Height: 1079, Bitrate: 50_000_000, HDR: "SDR", Available: true}
+	d := DecideWithPolicy(v, p, "", "", "720p", 8_000_000)
+	if d.Mode != VideoTranscode || d.Plan.Video.TargetWidth%2 != 0 || d.Plan.Video.TargetHeight%2 != 0 {
+		t.Fatalf("decision=%+v", d)
+	}
+	want := map[string]bool{"BITRATE_LIMIT_EXCEEDED": false, "RESOLUTION_LIMIT_EXCEEDED": false}
+	for _, r := range d.Reasons {
+		if _, ok := want[r.Code]; ok {
+			want[r.Code] = true
+		}
+	}
+	for k, ok := range want {
+		if !ok {
+			t.Fatalf("missing %s", k)
+		}
+	}
+}
+
+func TestHDRTranscodeFailsTruthfully(t *testing.T) {
+	p := browser()
+	p.SchemaVersion = 2
+	p.FragmentedMP4 = true
+	d := Decide(Version{ID: "hdr", Container: "mkv", VideoCodec: "hevc", AudioCodecs: []string{"aac"}, HDR: "HDR10_OR_PQ", Available: true}, p)
+	if d.Mode != Unsupported || d.Reasons[len(d.Reasons)-1].Code != "HDR_TONE_MAPPING_UNAVAILABLE" {
+		t.Fatal(d)
+	}
+}
+
 func TestTrackSelectionAndImageSubtitleTruth(t *testing.T) {
 	p := browser()
 	p.SchemaVersion = 2

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -25,6 +26,7 @@ func (h *Handler) playbackRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/v1/admin/playback/sessions/{sessionId}", h.require(auth.CapPlaybackSessionsManage, h.adminStopPlayback))
 	mux.HandleFunc("GET /api/v1/playback/sessions/{sessionId}/media", h.playbackMedia)
 	mux.HandleFunc("HEAD /api/v1/playback/sessions/{sessionId}/media", h.playbackMedia)
+	mux.HandleFunc("GET /api/v1/playback/sessions/{sessionId}/hls/{file}", h.playbackHLS)
 	mux.HandleFunc("GET /api/v1/playback/sessions/{sessionId}/subtitles/{trackId}", h.playbackSubtitle)
 	mux.HandleFunc("GET /api/v1/playback/continue-watching", h.require(auth.CapPlaybackSelfManage, h.continueWatching))
 	mux.HandleFunc("GET /api/v1/admin/playback/capabilities", h.require(auth.CapPlaybackSessionsView, h.playbackCapabilities))
@@ -34,6 +36,12 @@ func (h *Handler) startPlayback(w http.ResponseWriter, r *http.Request, p auth.P
 	var in playback.StartRequest
 	if !decode(w, r, &in) {
 		return
+	}
+	in.Network = playback.NetworkRemote
+	host, _, _ := net.SplitHostPort(r.RemoteAddr)
+	ip := net.ParseIP(host)
+	if ip != nil && (ip.IsLoopback() || ip.IsPrivate()) {
+		in.Network = playback.NetworkLocal
 	}
 	out, err := h.playback.Start(r.Context(), p.UserID, p.SessionID, in)
 	if err != nil {
@@ -46,6 +54,14 @@ func (h *Handler) startPlayback(w http.ResponseWriter, r *http.Request, p auth.P
 			secure := r.TLS != nil
 			http.SetCookie(w, &http.Cookie{Name: mediaCookie(out.ID), Value: parts[1], Path: "/api/v1/playback/sessions/" + out.ID + "/", HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode, MaxAge: int((4 * time.Hour).Seconds())})
 			out.MediaURL = parts[0]
+		}
+	}
+	if out.HLSURL != "" {
+		parts := strings.SplitN(out.HLSURL, "?token=", 2)
+		if len(parts) == 2 {
+			secure := r.TLS != nil
+			http.SetCookie(w, &http.Cookie{Name: mediaCookie(out.ID), Value: parts[1], Path: "/api/v1/playback/sessions/" + out.ID + "/", HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode, MaxAge: int((4 * time.Hour).Seconds())})
+			out.HLSURL = parts[0]
 		}
 	}
 	writeJSON(w, 201, out)
@@ -131,11 +147,37 @@ func (h *Handler) playbackError(w http.ResponseWriter, r *http.Request, err erro
 		writeError(w, r, 404, "NOT_FOUND", "The requested logical media was not found.")
 	case errors.Is(err, playback.ErrCapacity):
 		writeError(w, r, 503, "PLAYBACK_CAPACITY_REACHED", "All generated playback pipelines are currently in use.")
+	case errors.Is(err, playback.ErrVideoCapacity):
+		writeError(w, r, 503, "TRANSCODE_CAPACITY_REACHED", "All video transcode slots are currently in use.")
+	case errors.Is(err, playback.ErrTranscodeStorage):
+		writeError(w, r, 507, "TRANSCODE_STORAGE_EXHAUSTED", "Transcode storage is unavailable.")
 	case errors.Is(err, playback.ErrPipelineUnavailable):
 		writeError(w, r, 503, "FFMPEG_UNAVAILABLE", "Generated playback is unavailable on this server.")
 	default:
 		writeError(w, r, 500, "INTERNAL_ERROR", "An unexpected playback error occurred.")
 	}
+}
+
+func (h *Handler) playbackHLS(w http.ResponseWriter, r *http.Request) {
+	token := ""
+	if c, e := r.Cookie(mediaCookie(r.PathValue("sessionId"))); e == nil {
+		token = c.Value
+	}
+	p, e := h.playback.HLSFile(r.Context(), r.PathValue("sessionId"), token, r.PathValue("file"))
+	if e != nil {
+		h.playbackError(w, r, e)
+		return
+	}
+	if strings.HasSuffix(p, ".m3u8") {
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+	} else if strings.HasSuffix(p, ".m4s") {
+		w.Header().Set("Content-Type", "video/iso.segment")
+	} else {
+		w.Header().Set("Content-Type", "video/mp4")
+	}
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	http.ServeFile(w, r, p)
 }
 
 func (h *Handler) playbackMedia(w http.ResponseWriter, r *http.Request) {

@@ -5,6 +5,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
+import Hls from "./vendor/hls.min.mjs";
 import {
   api,
   browserCapabilities,
@@ -949,11 +950,14 @@ function Player({
     generatedURL = useRef(""),
     generatedEpoch = useRef(0),
     internalSeek = useRef(false),
+    hlsRef = useRef<InstanceType<typeof Hls> | null>(null),
+    resumeAfterStart = useRef(false),
     [session, setSession] = useState<PlaybackSession | null>(null),
     [versions, setVersions] = useState<PlaybackVersion[]>([]),
     [choice, setChoice] = useState(""),
     [audio, setAudio] = useState(""),
     [subtitle, setSubtitle] = useState(""),
+    [quality, setQuality] = useState(""),
     [position, setPosition] = useState(0),
     [playing, setPlaying] = useState(false),
     [message, setMessage] = useState("Preparing direct play…");
@@ -1053,13 +1057,29 @@ function Player({
     if (!v || !s) return;
     const bounded = Math.max(0, Math.min(target, s.duration || target));
     setPosition(bounded);
-    if (s.decision.mode === "DIRECT_PLAY") v.currentTime = bounded;
+    if (s.decision.mode === "DIRECT_PLAY"||s.decision.mode === "VIDEO_TRANSCODE") v.currentTime = bounded;
     else seekGenerated(bounded, !v.paused);
   }
-  async function start(version = choice, resume = true) {
-    if (sessionRef.current) report("STOPPED");
+  async function start(version = choice, resume = true, nextQuality = quality, startPosition = 0) {
+    const currentSession = sessionRef.current,
+      currentVideo = video.current;
+    resumeAfterStart.current = Boolean(currentSession && currentVideo && !currentVideo.paused);
+    if (currentSession && currentVideo) {
+      await api.updatePlayback(
+        currentSession.id,
+        "STOPPED",
+        currentVideo.currentTime,
+        Number.isFinite(currentVideo.duration) ? currentVideo.duration : currentSession.duration,
+      );
+	  sessionRef.current = null;
+	  hlsRef.current?.destroy();
+	  hlsRef.current = null;
+	  currentVideo.pause();
+	  currentVideo.removeAttribute("src");
+	  currentVideo.load();
+    }
     setMessage("Preparing direct play…");
-    const s = await api.startPlayback(type, id, version, resume, audio, subtitle);
+    const s = await api.startPlayback(type, id, version, resume, audio, subtitle, nextQuality, startPosition);
     sessionRef.current = s;
     setSession(s);
     if (s.decision.mode === "UNSUPPORTED") {
@@ -1070,7 +1090,14 @@ function Player({
   }
   useEffect(() => {
     const v=video.current;
-    if (!session||!v||!session.mediaUrl) return;
+    if (!session||!v) return;
+    hlsRef.current?.destroy();hlsRef.current=null;
+    if(session.decision.mode==="VIDEO_TRANSCODE"&&session.hlsUrl){
+      if(Hls.isSupported()){const h=new Hls({enableWorker:true});hlsRef.current=h;h.loadSource(session.hlsUrl);h.attachMedia(v);h.on(Hls.Events.MANIFEST_PARSED,()=>{if(session.resumePosition>0)v.currentTime=session.resumePosition;if(resumeAfterStart.current)v.play().catch(error=>setMessage(error.message));else setMessage("Ready")});h.on(Hls.Events.ERROR,(_event:unknown,data:{fatal:boolean;details:string})=>{if(data.fatal)setMessage(`Playback error: ${data.details}`)});return()=>h.destroy()}
+      if(v.canPlayType("application/vnd.apple.mpegurl")){v.src=session.hlsUrl;return}
+      setMessage("HLS playback is unavailable in this browser.");return
+    }
+    if(!session.mediaUrl)return;
     if (session.decision.mode==="DIRECT_PLAY") {
       if (session.resumePosition>0) v.currentTime=session.resumePosition;
     } else attachGeneratedStream(session,session.resumePosition).catch(e=>setMessage(e.message));
@@ -1102,6 +1129,7 @@ function Player({
       removeEventListener("keydown", keys);
       report("STOPPED");
       generatedAbort.current?.abort();
+      hlsRef.current?.destroy();
       if (generatedURL.current) URL.revokeObjectURL(generatedURL.current);
       if (video.current) {
         video.current.pause();
@@ -1119,7 +1147,7 @@ function Player({
         </button>
         <strong>VyNode · {session?.decision.mode.replaceAll("_", " ") || "Playback"}</strong>
       </div>
-      {session?.decision.mode !== "UNSUPPORTED" && session?.mediaUrl ? (
+      {session?.decision.mode !== "UNSUPPORTED" && (session?.mediaUrl||session?.hlsUrl) ? (
         <video
           ref={video}
           src={session.decision.mode === "DIRECT_PLAY" ? session.mediaUrl : undefined}
@@ -1142,7 +1170,7 @@ function Player({
           }}
           onSeeking={() => {
             const v=video.current,s=sessionRef.current;
-            if (!v||!s||s.decision.mode==="DIRECT_PLAY"||internalSeek.current) return;
+            if (!v||!s||s.decision.mode==="DIRECT_PLAY"||s.decision.mode==="VIDEO_TRANSCODE"||internalSeek.current) return;
             const target=v.currentTime,resumePlayback=!v.paused;
             seekGenerated(target,resumePlayback);
           }}
@@ -1188,6 +1216,7 @@ function Player({
           </select>
         </label>
         <button onClick={() => start(choice, true)}>Play selection</button>
+        {session?.availableQualities?.length ? <label>Quality<select aria-label="Quality" value={quality} onChange={e=>{const next=e.target.value,current=video.current?.currentTime||0;setQuality(next);start(choice,true,next,current).catch(error=>setMessage(error.message))}}><option value="">Auto</option>{session.availableQualities.map(q=><option key={q.id} value={q.id}>{q.label}</option>)}</select></label>:null}
         <button onClick={()=>{const v=video.current;if(v){if(v.paused)v.play().catch(e=>setMessage(e.message));else v.pause()}}}>{playing?"Pause":"Play"}</button>
         <button onClick={()=>seekTo(position-10)}>−10s</button>
         <button onClick={()=>seekTo(position+10)}>+10s</button>
@@ -1271,6 +1300,7 @@ function ActiveStreams() {
               {x.state} · {formatTime(x.position)} / {formatTime(x.duration)} ·{" "}
               {x.selectedVersion?.resolution} {x.selectedVersion?.videoCodec}
               {x.decision.mode !== "DIRECT_PLAY" && <> · Video {x.decision.plan.video.action} · Audio {x.decision.plan.audio.sourceCodec}{x.decision.plan.audio.targetCodec && ` → ${x.decision.plan.audio.targetCodec}`} · {x.decision.plan.container.target}</>}
+              {x.decision.mode === "VIDEO_TRANSCODE" && <> · {x.decision.plan.video.sourceCodec?.toUpperCase()} → {x.decision.plan.video.targetCodec?.toUpperCase()} · {x.decision.plan.video.targetHeight}p · {x.decision.plan.backend?.actual || "SOFTWARE"}</>}
             </p>
           </div>
           <button onClick={() => api.adminStopPlayback(x.id).then(load)}>
