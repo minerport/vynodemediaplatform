@@ -30,8 +30,8 @@ and audit foundations. Each install receives an RFC 4122 v4 instance ID stored i
 
 ## Authentication and security
 
-Phase 1 will add owner bootstrap, Argon2id password hashes, short access tokens,
-rotating hashed refresh tokens, device sessions, revocation, RBAC, rate limiting,
+Phase 1 implements owner bootstrap, Argon2id password hashes, short access tokens,
+rotating hashed refresh tokens with replay revocation, device sessions, RBAC, rate limiting,
 CSRF rules, and audit events. Trust boundaries are: untrusted client to API; API to
 validated application commands; application to persistence/filesystem; and server
 to external providers. Paths, secrets, tokens, raw provider responses, and internal
@@ -62,9 +62,10 @@ availability never gates local authentication, browsing, playback, or administra
 ## Deployment and clients
 
 The same server core builds natively on Linux/Windows and into amd64/arm64 OCI
-images; Unraid consumes that image. Windows will add a Service/installer without
-requiring Docker. React/TypeScript is the browser client. Android is native
+images; Unraid consumes that image. The OCI image builds and serves the production
+React bundle, including SPA fallback for direct protected-route reloads. Native
+deployments can serve the same bundle by setting `VYNODE_WEB_DIR`. Windows will add
+a Service/installer without requiring Docker. React/TypeScript is the browser client. Android is native
 Kotlin/Compose with Media3, including TV focus/remote behavior—not a WebView. Apple
 clients will use SwiftUI/AVFoundation. Every client consumes API models and
 capability contracts rather than persistence models.
-

@@ -20,8 +20,49 @@ paths:
     get:
       operationId: getSystemInfo
       responses: { '200': { description: Safe server information, content: { application/json: { schema: { $ref: '#/components/schemas/SystemInfo' } } } } }
+  /api/v1/setup/status:
+    get: { operationId: getSetupStatus, responses: { '200': { description: Persistent setup state } } }
+  /api/v1/setup/owner:
+    post: { operationId: createOwner, summary: Available only while setup is required, requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/OwnerSetup' } } } }, responses: { '201': { description: Owner and browser session created }, '409': { $ref: '#/components/responses/Conflict' } } }
+  /api/v1/auth/login:
+    post: { operationId: login, requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/Login' } } } }, responses: { '200': { description: Access token returned and HttpOnly refresh cookie set }, '401': { $ref: '#/components/responses/Unauthorized' } } }
+  /api/v1/auth/refresh:
+    post: { operationId: refreshSession, summary: Rotates cookie or native refresh credential, responses: { '200': { description: Rotated session credentials }, '401': { $ref: '#/components/responses/Unauthorized' } } }
+  /api/v1/auth/logout:
+    post: { operationId: logout, security: [{ bearerAuth: [] }], responses: { '204': { description: Current session revoked } } }
+  /api/v1/auth/logout-others:
+    post: { operationId: logoutOthers, security: [{ bearerAuth: [] }], responses: { '204': { description: Other sessions revoked } } }
+  /api/v1/account/me:
+    get: { operationId: getCurrentAccount, security: [{ bearerAuth: [] }], responses: { '200': { description: Current safe account profile } } }
+  /api/v1/account/sessions:
+    get: { operationId: listSessions, security: [{ bearerAuth: [] }], responses: { '200': { description: Active devices and sessions; no credentials } } }
+  /api/v1/account/sessions/{sessionId}:
+    delete: { operationId: revokeSession, security: [{ bearerAuth: [] }], parameters: [{ name: sessionId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: Session revoked } } }
+  /api/v1/account/password:
+    post: { operationId: changePassword, security: [{ bearerAuth: [] }], responses: { '204': { description: Password changed and other sessions revoked } } }
+  /api/v1/admin/users:
+    get: { operationId: listUsers, summary: Requires users.manage, security: [{ bearerAuth: [] }], responses: { '200': { description: Safe user list } } }
+    post: { operationId: createUser, summary: Requires users.manage; ADMIN or USER only, security: [{ bearerAuth: [] }], responses: { '201': { description: Account created } } }
+  /api/v1/admin/users/{id}:
+    get: { operationId: getUser, summary: Requires users.manage, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Safe account detail } } }
+    patch: { operationId: setUserEnabled, summary: Requires users.manage; OWNER cannot be changed, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: Status updated; disable revokes sessions } } }
+  /api/v1/admin/audit:
+    get: { operationId: listAuditEvents, summary: Requires audit.view, security: [{ bearerAuth: [] }], parameters: [{ name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }, { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }], responses: { '200': { description: Newest-first audit page } } }
 components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  responses:
+    Unauthorized: { description: Authentication failed, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Conflict: { description: State conflict, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   schemas:
+    OwnerSetup:
+      type: object
+      required: [username, displayName, password]
+      properties: { username: { type: string, minLength: 3, maxLength: 64 }, displayName: { type: string, minLength: 1, maxLength: 100 }, password: { type: string, minLength: 10, maxLength: 256, writeOnly: true }, serverName: { type: string, maxLength: 100 }, device: { type: object } }
+    Login:
+      type: object
+      required: [username, password]
+      properties: { username: { type: string }, password: { type: string, writeOnly: true }, device: { type: object } }
     Probe:
       type: object
       required: [status]
