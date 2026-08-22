@@ -1,5 +1,9 @@
 # Platform support
 
+Logical metadata and cached artwork use paths below the configured application-data directory on Windows and `/config` in containers/Unraid. Provider outages do not prevent startup, scanning, authentication, or local browsing.
+
+Phase 3 was runtime-validated in the Linux Docker image and cross-built for Windows. Native Windows Phase 3 execution remains unavailable in the validation environment because a host Go toolchain is not installed; this does not alter the already validated read-only Windows scanning design.
+
 **SUPPORTED** is implemented and validated; **PLANNED** has an explicit roadmap;
 **FUTURE** is intentionally deferred and subject to platform evaluation.
 

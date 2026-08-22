@@ -1,0 +1,7 @@
+# Artwork
+
+Artwork belongs to logical movies, shows, seasons, or episodes. Candidate rows preserve provider path, language, dimensions, ranking, type, selection, and manual-selection state. Supported types are poster, backdrop, logo, season poster, and episode still.
+
+Selected originals are cached below `/config/cache/artwork`; nothing is written beside media. Production downloads accept only the controlled HTTPS TMDb image host and reject redirects to other schemes or hosts. The deterministic development harness can be enabled only with the explicit insecure-test-provider switch. Downloads enforce a 15 MiB response limit, accept validated JPEG and PNG data, require declared and decoded formats to agree, generate names from VyNode hashes, and use atomic temporary-file replacement. Failed and partial downloads remove temporary files and never replace a valid last-known-good image.
+
+Clients receive images through an authenticated VyNode endpoint with MIME, cache control, ETag, and conditional `304` support. Delivery revalidates cached bytes and fails safely for missing or corrupt files. Cache paths and provider image URLs are never exposed as the normal consumer path. Manual selection immediately caches the chosen image, persists across restart, and is represented independently so later metadata refresh does not replace it. Originals are retained for future non-destructive overlay variants; cleanup is intentionally deferred until it can be reference-aware.

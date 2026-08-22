@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"github.com/vynode/media/server/internal/auth"
 	"github.com/vynode/media/server/internal/media"
+	"github.com/vynode/media/server/internal/metadata"
 	"log/slog"
 	"net/http"
 	"os"
@@ -32,6 +33,7 @@ type Handler struct {
 	info          SystemInfo
 	auth          *auth.Service
 	media         *media.Service
+	metadata      *metadata.Service
 	allowedOrigin string
 }
 type errorResponse struct {
@@ -43,8 +45,8 @@ type apiError struct {
 	RequestID string `json:"requestId,omitempty"`
 }
 
-func NewHandler(logger *slog.Logger, readiness Readiness, info SystemInfo, authService *auth.Service, mediaService *media.Service, allowedOrigin string) http.Handler {
-	h := &Handler{logger: logger, readiness: readiness, info: info, auth: authService, media: mediaService, allowedOrigin: allowedOrigin}
+func NewHandler(logger *slog.Logger, readiness Readiness, info SystemInfo, authService *auth.Service, mediaService *media.Service, metadataService *metadata.Service, allowedOrigin string) http.Handler {
+	h := &Handler{logger: logger, readiness: readiness, info: info, auth: authService, media: mediaService, metadata: metadataService, allowedOrigin: allowedOrigin}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", h.health)
 	mux.HandleFunc("GET /ready", h.ready)
@@ -55,6 +57,9 @@ func NewHandler(logger *slog.Logger, readiness Readiness, info SystemInfo, authS
 	}
 	if mediaService != nil {
 		h.mediaRoutes(mux)
+	}
+	if metadataService != nil {
+		h.metadataRoutes(mux)
 	}
 	if info.WebDir != "" {
 		mux.Handle("/", spaHandler(info.WebDir))

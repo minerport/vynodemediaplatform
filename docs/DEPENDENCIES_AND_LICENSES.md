@@ -1,5 +1,7 @@
 # Dependencies and licenses
 
+TMDb is an optional external metadata service accessed through its documented API using an operator-supplied credential. VyNode does not bundle TMDb data or credentials. Image validation uses Go standard-library decoders; Phase 3 adds no runtime package dependency.
+
 | Dependency | Use | License |
 | --- | --- | --- |
 | Go standard library | Server/runtime/HTTP/database abstraction | BSD-3-Clause |

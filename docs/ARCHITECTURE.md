@@ -1,5 +1,7 @@
 # VyNode Media architecture
 
+Phase 3 adds a strict three-layer media model: filesystem observations, provider-backed logical media, and replaceable many-to-many associations. See [METADATA.md](METADATA.md), [MATCHING.md](MATCHING.md), and [ARTWORK.md](ARTWORK.md). External connectivity enriches the local database but is never a runtime dependency for browsing.
+
 ## System shape and boundaries
 
 One headless Go server owns policy, persistence, scanning, metadata coordination,
