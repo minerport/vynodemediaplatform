@@ -93,6 +93,10 @@ func username(v string) (string, error) {
 	}
 	return v, nil
 }
+
+// NormalizeUsername applies the same canonicalization and validation used by
+// setup and administrative account creation.
+func NormalizeUsername(v string) (string, error) { return username(v) }
 func (s *Service) SetupRequired(ctx context.Context) (bool, error) {
 	var completed sql.NullString
 	err := s.DB.QueryRowContext(ctx, "SELECT completed_at FROM setup_state WHERE id=1").Scan(&completed)
@@ -184,6 +188,12 @@ func (s *Service) createSession(ctx context.Context, u User, d DeviceInput, remo
 	}
 	access, err := s.sign(u.ID, sid, u.Role, now)
 	return Tokens{access, refresh, "Bearer", int64(s.AccessTTL.Seconds()), u}, err
+}
+
+// IssueSession is the single session issuance path used by trusted bootstrap
+// flows such as invitation acceptance and device pairing.
+func (s *Service) IssueSession(ctx context.Context, u User, d DeviceInput, remote, requestID string) (Tokens, error) {
+	return s.createSession(ctx, u, d, remote, requestID)
 }
 func newRefresh(sid string) (string, string) {
 	b := make([]byte, 32)

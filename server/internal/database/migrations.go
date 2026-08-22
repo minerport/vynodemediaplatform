@@ -175,6 +175,39 @@ CREATE INDEX idx_health_status_category ON health_issues(status,severity,categor
 CREATE INDEX idx_operational_created_type ON operational_events(created_at DESC,event_type);
 CREATE INDEX idx_delivery_due ON notification_deliveries(status,next_attempt_at);
 CREATE INDEX idx_subscription_event ON notification_subscriptions(event_type,destination_id);
+`}, {13, "sharing_and_remote_access", `
+CREATE TABLE library_access_grants (user_id TEXT NOT NULL,library_id TEXT NOT NULL,permission TEXT NOT NULL CHECK(permission IN ('VIEW','PLAY')),granted_by TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(user_id,library_id,permission),FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,FOREIGN KEY(library_id) REFERENCES libraries(id) ON DELETE CASCADE,FOREIGN KEY(granted_by) REFERENCES users(id));
+CREATE TABLE user_invitations (id TEXT PRIMARY KEY,identifier TEXT NOT NULL DEFAULT '',intended_role TEXT NOT NULL CHECK(intended_role IN ('ADMIN','USER')),token_hash TEXT NOT NULL UNIQUE,status TEXT NOT NULL CHECK(status IN ('PENDING','ACCEPTED','EXPIRED','REVOKED')),created_by TEXT NOT NULL,created_at TEXT NOT NULL,expires_at TEXT NOT NULL,accepted_at TEXT,accepted_user_id TEXT,revoked_at TEXT,FOREIGN KEY(created_by) REFERENCES users(id),FOREIGN KEY(accepted_user_id) REFERENCES users(id));
+CREATE TABLE invitation_library_grants (invitation_id TEXT NOT NULL,library_id TEXT NOT NULL,permission TEXT NOT NULL CHECK(permission IN ('VIEW','PLAY')),PRIMARY KEY(invitation_id,library_id,permission),FOREIGN KEY(invitation_id) REFERENCES user_invitations(id) ON DELETE CASCADE,FOREIGN KEY(library_id) REFERENCES libraries(id) ON DELETE CASCADE);
+CREATE TABLE pairing_requests (id TEXT PRIMARY KEY,code_hash TEXT NOT NULL UNIQUE,challenge_hash TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('PENDING','APPROVED','DENIED','EXPIRED','EXCHANGED')),device_name TEXT NOT NULL,client_name TEXT NOT NULL,client_version TEXT NOT NULL DEFAULT '',platform TEXT NOT NULL,platform_version TEXT NOT NULL DEFAULT '',requested_at TEXT NOT NULL,expires_at TEXT NOT NULL,approved_by TEXT,approved_at TEXT,denied_at TEXT,attempt_count INTEGER NOT NULL DEFAULT 0,device_id TEXT,session_id TEXT,FOREIGN KEY(approved_by) REFERENCES users(id),FOREIGN KEY(device_id) REFERENCES devices(id),FOREIGN KEY(session_id) REFERENCES sessions(id));
+CREATE TABLE server_endpoints (id TEXT PRIMARY KEY,endpoint_type TEXT NOT NULL CHECK(endpoint_type IN ('LOCAL','MANUAL_REMOTE','DISCOVERED_EXTERNAL','CONNECT')),base_url TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 1,verification_status TEXT NOT NULL CHECK(verification_status IN ('CONFIGURED','REACHABLE_FROM_SERVER','UNVERIFIED_EXTERNALLY','FAILED')),last_checked_at TEXT,last_error TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+CREATE TABLE remote_access_settings (id INTEGER PRIMARY KEY CHECK(id=1),discovery_enabled INTEGER NOT NULL DEFAULT 1,port_mapping_enabled INTEGER NOT NULL DEFAULT 0,reverse_proxy_enabled INTEGER NOT NULL DEFAULT 0,insecure_remote_allowed INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL);
+INSERT INTO remote_access_settings(id,updated_at) VALUES(1,CURRENT_TIMESTAMP);
+CREATE TABLE trusted_proxy_cidrs (cidr TEXT PRIMARY KEY,created_at TEXT NOT NULL);
+CREATE TABLE local_network_cidrs (cidr TEXT PRIMARY KEY,created_at TEXT NOT NULL);
+CREATE TABLE port_mappings (id TEXT PRIMARY KEY,protocol TEXT NOT NULL CHECK(protocol IN ('UPNP','NAT_PMP','PCP')),state TEXT NOT NULL CHECK(state IN ('DISABLED','DISCOVERING','MAPPED','FAILED','UNSUPPORTED')),internal_port INTEGER NOT NULL,external_port INTEGER,gateway TEXT,lease_expires_at TEXT,owned INTEGER NOT NULL DEFAULT 0,last_error TEXT,updated_at TEXT NOT NULL);
+CREATE TABLE connection_history (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,device_id TEXT,connection_class TEXT NOT NULL CHECK(connection_class IN ('LOCAL_SECURE','LOCAL_INSECURE','REMOTE_SECURE','REMOTE_INSECURE')),remote_address TEXT NOT NULL,connected_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,FOREIGN KEY(device_id) REFERENCES devices(id) ON DELETE SET NULL);
+ALTER TABLE devices ADD COLUMN authorization_type TEXT NOT NULL DEFAULT 'PASSWORD' CHECK(authorization_type IN ('PASSWORD','PAIRED'));
+ALTER TABLE devices ADD COLUMN authorized_at TEXT;
+ALTER TABLE devices ADD COLUMN last_endpoint TEXT;
+ALTER TABLE devices ADD COLUMN last_connection_class TEXT;
+CREATE INDEX idx_library_grants_user_library ON library_access_grants(user_id,library_id,permission);
+CREATE INDEX idx_invites_status_expiry ON user_invitations(status,expires_at);
+CREATE INDEX idx_pairing_status_expiry ON pairing_requests(status,expires_at);
+CREATE INDEX idx_pairing_approved_user ON pairing_requests(approved_by,status);
+CREATE INDEX idx_devices_user_auth ON devices(user_id,authorization_type);
+CREATE INDEX idx_endpoints_type_enabled ON server_endpoints(endpoint_type,enabled);
+CREATE INDEX idx_connection_user_time ON connection_history(user_id,connected_at DESC);
+`}, {14, "network_runtime_state", `
+ALTER TABLE remote_access_settings ADD COLUMN port_mapping_external_port INTEGER NOT NULL DEFAULT 0 CHECK(port_mapping_external_port BETWEEN 0 AND 65535);
+ALTER TABLE remote_access_settings ADD COLUMN discovery_runtime_status TEXT NOT NULL DEFAULT 'DISABLED' CHECK(discovery_runtime_status IN ('DISABLED','STARTING','RUNNING','ERROR'));
+ALTER TABLE remote_access_settings ADD COLUMN discovery_last_error TEXT NOT NULL DEFAULT '';
+ALTER TABLE remote_access_settings ADD COLUMN discovery_updated_at TEXT;
+ALTER TABLE port_mappings RENAME TO port_mappings_v13;
+CREATE TABLE port_mappings (id TEXT PRIMARY KEY,protocol TEXT NOT NULL CHECK(protocol IN ('UPNP','NAT_PMP','PCP')),state TEXT NOT NULL CHECK(state IN ('DISABLED','DISCOVERING','MAPPED','RENEWING','FAILED','UNSUPPORTED')),internal_port INTEGER NOT NULL CHECK(internal_port BETWEEN 1 AND 65535),external_port INTEGER CHECK(external_port BETWEEN 1 AND 65535),gateway TEXT,lease_expires_at TEXT,owned INTEGER NOT NULL DEFAULT 0,last_error TEXT,updated_at TEXT NOT NULL);
+INSERT INTO port_mappings SELECT * FROM port_mappings_v13;
+DROP TABLE port_mappings_v13;
+CREATE INDEX idx_port_mapping_protocol_state ON port_mappings(protocol,state);
 `}}
 
 func (s *Store) Migrate(ctx context.Context) error {

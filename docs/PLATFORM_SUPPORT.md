@@ -1,5 +1,7 @@
 # Platform support
 
+Remote access through a standards-compliant reverse proxy is platform-neutral. IPv4/IPv6 proxy and local-network policy is supported. Phase 11 ships host-LAN mDNS advertisement and an opt-in UPnP IGD client; it does not ship built-in TLS, NAT-PMP, or PCP. Docker bridge multicast cannot be assumed, so discovery validation distinguishes host networking and Unraid behavior.
+
 Logical metadata and cached artwork use paths below the configured application-data directory on Windows and `/config` in containers/Unraid. Provider outages do not prevent startup, scanning, authentication, or local browsing.
 
 Phase 3 was runtime-validated in the Linux Docker image and cross-built for Windows. Native Windows Phase 3 execution remains unavailable in the validation environment because a host Go toolchain is not installed; this does not alter the already validated read-only Windows scanning design.

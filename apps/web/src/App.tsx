@@ -53,7 +53,7 @@ export function App() {
           setInfo(await api.info());
           if (requested() === "setup" || requested() === "login") go("home");
         } catch {
-          go("login");
+          if (!requested().startsWith("invite/")) go("login");
         }
       })
       .finally(() => setLoading(false));
@@ -77,6 +77,7 @@ export function App() {
         }}
       />
     );
+  if(page.startsWith("invite/"))return <InviteAccept token={page.slice(7)} done={u=>{setUser(u);api.info().then(setInfo);go("home")}}/>;
   if (page === "login" || !user)
     return (
       <Login
@@ -93,7 +94,7 @@ export function App() {
       page === "audit" ||
       page === "libraries" ||
       page === "metadata" ||
-      page === "automation" ||
+      page === "automation" || page === "admin/sharing" || page === "admin/remote-access" ||
       page === "streams" || page === "admin/dashboard" || page === "admin/analytics" || page === "admin/health" || page === "admin/jobs" || page === "admin/notifications") &&
     !admin
   ) {
@@ -129,6 +130,10 @@ export function App() {
     <JobsPage />
   ) : page === "admin/notifications" ? (
     <NotificationsPage />
+  ) : page === "admin/sharing" ? (
+    <SharingPage />
+  ) : page === "admin/remote-access" ? (
+    <RemoteAccessPage />
   ) : page === "movies" ? (
     <Movies go={go} />
   ) : page.startsWith("movies/") ? (
@@ -183,6 +188,8 @@ export function App() {
               <Nav go={go} page={page} target="admin/health">Health</Nav>
               <Nav go={go} page={page} target="admin/jobs">Jobs</Nav>
               <Nav go={go} page={page} target="admin/notifications">Webhooks</Nav>
+              <Nav go={go} page={page} target="admin/sharing">Sharing</Nav>
+              {user.role==="OWNER"&&<Nav go={go} page={page} target="admin/remote-access">Remote Access</Nav>}
               <Nav go={go} page={page} target="libraries">
                 Libraries
               </Nav>
@@ -249,6 +256,8 @@ export function App() {
               <option value="admin/health">Health</option>
               <option value="admin/jobs">Jobs</option>
               <option value="admin/notifications">Webhooks</option>
+              <option value="admin/sharing">Sharing</option>
+              {user.role==="OWNER"&&<option value="admin/remote-access">Remote Access</option>}
             </select>
           </label>
         )}
@@ -527,9 +536,23 @@ function Account({ user, info }: { user: User; info: SystemInfo | null }) {
         <label>Remote streaming quality<select value={preferences.remoteQualityId} onChange={e=>setPreferences({...preferences,remoteQualityId:e.target.value})}><option value="auto">Auto</option><option value="original">Original</option><option value="1080p">Up to 1080p</option><option value="720p">Up to 720p</option><option value="480p">Up to 480p</option></select></label>
         <button disabled={busy}>Save playback preferences</button>
       </form>}
+      <PairDevice />
     </section>
   );
 }
+
+function InviteAccept({token,done}:{token:string;done:(u:User)=>void}){
+  const [invite,setInvite]=useState<{serverName:string;invitation:import("./api").Invitation}|null>(null),[error,setError]=useState("");
+  useEffect(()=>{api.inspectInvitation(token).then(setInvite).catch(e=>setError(e.message))},[token]);
+  async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=e.currentTarget,d=new FormData(f);setError("");try{const u=await api.acceptInvitation({token,username:d.get("username"),displayName:d.get("display"),password:d.get("password"),device:{name:"Web browser",clientName:"VyNode Web",platform:navigator.platform||"web"}});done(u)}catch(x){setError(x instanceof Error?x.message:"Unable to accept invitation")}}
+  return <main className="auth"><section className="auth-card"><div className="mark large">V</div><h1>{invite?.serverName||"VyNode Media"}</h1>{invite?<><p>You were invited as <strong>{invite.invitation.role}</strong> with access to {invite.invitation.libraries.map(x=>x.libraryName).join(", ")||"no libraries"}.</p><form onSubmit={submit}><label>Display name<input name="display" required maxLength={100}/></label><label>Username<input name="username" required pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,63}"/></label><label>Password<input name="password" type="password" minLength={10} required/></label><button>Create account</button></form></>:!error&&<p>Checking invitation…</p>}{error&&<p className="form-error" role="alert">{error}</p>}</section></main>
+}
+
+function PairDevice(){const [code,setCode]=useState(""),[request,setRequest]=useState<import("./api").PairingRequest|null>(null),[message,setMessage]=useState("");async function find(e:FormEvent){e.preventDefault();setMessage("");try{setRequest(await api.lookupPairing(code))}catch(x){setMessage(x instanceof Error?x.message:"Pairing request unavailable")}}return <section><h2>Pair a device</h2><p>Enter the short code shown by your TV or native client. Approval creates a normal revocable device session.</p><form onSubmit={find}><label>Pairing code<input value={code} onChange={e=>setCode(e.target.value.toUpperCase())} placeholder="ABCD-7KQ2" maxLength={9} required/></label><button>Find device</button></form>{request&&<div className="list-row"><div><strong>{request.deviceName}</strong><p>{request.clientName} · {request.platform}<br/>Requested {new Date(request.requestedAt).toLocaleString()}</p></div><div><button onClick={()=>api.approvePairing(request.id).then(()=>{setMessage("Device approved. It may now complete normal session setup.");setRequest(null)})}>Approve</button><button className="danger" onClick={()=>api.denyPairing(request.id).then(()=>setRequest(null))}>Deny</button></div></div>}{message&&<p role="status">{message}</p>}</section>}
+
+function SharingPage(){const [users,setUsers]=useState<User[]>([]),[libraries,setLibraries]=useState<Library[]>([]),[invitations,setInvitations]=useState<import("./api").Invitation[]>([]),[selected,setSelected]=useState<Record<string,string[]>>({}),[link,setLink]=useState(""),[message,setMessage]=useState("");const load=()=>Promise.all([api.users(),api.libraries(),api.invitations()]).then(async([u,l,i])=>{setUsers(u.users);setLibraries(l.libraries);setInvitations(i.invitations);const entries=await Promise.all(u.users.map(async x=>[x.id,(await api.userGrants(x.id)).grants.map(g=>g.libraryId)] as const));setSelected(Object.fromEntries(entries))});useEffect(()=>{load()},[]);const toggle=(user:string,library:string)=>setSelected(v=>({...v,[user]:(v[user]||[]).includes(library)?v[user].filter(x=>x!==library):[...(v[user]||[]),library]}));async function invite(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=e.currentTarget,d=new FormData(f),ids=d.getAll("library").map(String);const x=await api.createInvitation({identifier:d.get("identifier"),role:d.get("role"),expiresInHours:Number(d.get("expiration")),libraries:ids.map(libraryId=>({libraryId,permissions:["VIEW","PLAY"]}))});setLink(location.origin+x.invitePath);setMessage("This invite link is shown once. Create a new invitation if you lose it.");f.reset();load()}return <section className="content admin-console"><div className="admin-heading"><div><p className="eyebrow">ACCESS POLICY</p><h2>Users and sharing</h2></div></div><div className="ops-grid"><section><h3>Library access</h3>{users.filter(u=>u.role==="USER").map(u=><div key={u.id} className="sharing-user"><strong>{u.displayName}</strong><small>@{u.username} · role and media access are independent</small>{libraries.map(l=><label key={l.id}><input type="checkbox" checked={(selected[u.id]||[]).includes(l.id)} onChange={()=>toggle(u.id,l.id)}/> {l.name}</label>)}<button onClick={()=>api.setUserGrants(u.id,(selected[u.id]||[]).map(libraryId=>({libraryId,permissions:["VIEW","PLAY"]}))).then(()=>setMessage(`Access updated for ${u.displayName}.`))}>Apply access</button></div>)}</section><section><h3>Invite user</h3><form onSubmit={invite}><label>Identifier (optional)<input name="identifier" maxLength={100}/></label><label>Role<select name="role"><option value="USER">User</option><option value="ADMIN">Admin</option></select></label><label>Expires<select name="expiration"><option value="1">1 hour</option><option value="24">24 hours</option><option value="168">7 days</option></select></label>{libraries.map(l=><label key={l.id}><input type="checkbox" name="library" value={l.id}/> {l.name}</label>)}<button>Create invitation</button></form>{link&&<div className="one-time-secret"><label>One-time invite link<input readOnly value={link}/></label><button onClick={()=>navigator.clipboard.writeText(link)}>Copy invite link</button></div>}{message&&<p role="status">{message}</p>}</section><section><h3>Invitations</h3>{invitations.map(x=><div className="event-row" key={x.id}><b>{x.status}</b><span>{x.identifier||"Unlabeled"} · {x.role} · {x.libraries.map(l=>l.libraryName).join(", ")||"No libraries"}</span><time>Expires {new Date(x.expiresAt).toLocaleString()}</time>{x.status==="PENDING"&&<button onClick={()=>api.revokeInvitation(x.id).then(load)}>Revoke</button>}</div>)}</section></div></section>}
+
+function RemoteAccessPage(){const [x,setX]=useState<import("./api").RemoteSettings|null>(null),[message,setMessage]=useState("");useEffect(()=>{api.remoteAccess().then(setX)},[]);if(!x)return <section className="panel loading"><div/><div/></section>;return <section className="content admin-console"><div className="admin-heading"><div><p className="eyebrow">LOCAL-FIRST NETWORKING</p><h2>Remote Access</h2></div></div><div className="ops-grid"><section><h3>Connection policy</h3><label><input type="checkbox" checked={x.discoveryEnabled} onChange={e=>setX({...x,discoveryEnabled:e.target.checked})}/> LAN Discovery</label><small>Runtime: {x.discoveryStatus}{x.discoveryLastError?` · ${x.discoveryLastError}`:""}</small><label><input type="checkbox" checked={x.reverseProxyEnabled} onChange={e=>setX({...x,reverseProxyEnabled:e.target.checked})}/> Reverse proxy enabled</label><label>Manual remote URL<input value={x.manualRemoteUrl||""} placeholder="https://media.example.com" onChange={e=>setX({...x,manualRemoteUrl:e.target.value})}/></label><label><input type="checkbox" checked={x.insecureRemoteAllowed} onChange={e=>setX({...x,insecureRemoteAllowed:e.target.checked})}/> Explicitly allow insecure HTTP remote URL</label>{x.manualRemoteUrl?.startsWith("http:")&&<p className="form-error">Remote credentials and media would travel over an insecure connection.</p>}<button onClick={()=>api.saveRemoteAccess(x).then(v=>{setX(v);setMessage("Remote access settings saved.")}).catch(e=>setMessage(e.message))}>Save settings</button></section><section><h3>Trusted networks</h3><label>Trusted proxy CIDRs<textarea value={x.trustedProxyCidrs.join("\n")} onChange={e=>setX({...x,trustedProxyCidrs:e.target.value.split(/\s+/).filter(Boolean)})}/></label><small>Forwarded headers are accepted only from these explicit proxy networks.</small><label>Local network CIDRs<textarea value={x.localNetworkCidrs.join("\n")} onChange={e=>setX({...x,localNetworkCidrs:e.target.value.split(/\s+/).filter(Boolean)})}/></label><small>Classification affects warnings and playback quality, never authentication.</small></section><section><h3>Diagnostics</h3><table><tbody><tr><th>Manual endpoint</th><td>{x.manualStatus}</td></tr><tr><th>TLS</th><td>{x.manualRemoteUrl?.startsWith("https:")?"HTTPS configured":x.manualRemoteUrl?"INSECURE":"Not configured"}</td></tr><tr><th>LAN discovery</th><td>{x.discoveryStatus}</td></tr><tr><th>Automatic mapping</th><td>{x.portMappingProtocol||"UPNP"} · {x.portMappingStatus}</td></tr>{x.portMappingLeaseExpiresAt&&<tr><th>Mapping lease</th><td>{new Date(x.portMappingLeaseExpiresAt).toLocaleString()}</td></tr>}<tr><th>External reachability</th><td>Unverified externally</td></tr></tbody></table><label><input type="checkbox" checked={x.portMappingEnabled} onChange={e=>setX({...x,portMappingEnabled:e.target.checked})}/> Enable automatic port mapping</label><label>External TCP port (0 = listener port)<input type="number" min="0" max="65535" value={x.portMappingExternalPort||0} onChange={e=>setX({...x,portMappingExternalPort:Number(e.target.value)})}/></label><small>UPnP IGD is opt-in and maps only VyNode's configured listener. A successful mapping does not prove external reachability.</small>{x.portMappingLastError&&<p className="form-error">{x.portMappingLastError}</p>}{message&&<p role="status">{message}</p>}</section></div></section>}
 function Sessions() {
   const [items, setItems] = useState<Session[]>([]),
     [msg, setMsg] = useState("");

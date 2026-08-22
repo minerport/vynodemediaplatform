@@ -32,7 +32,11 @@ root preserves prior inventory rather than causing mass missing-file updates.
 
 ## Not yet implemented
 
-MFA, passkeys, cloud/console recovery, owner recovery or transfer, external identity providers, trusted-proxy parsing, VyNode Connect, and device pairing are not implemented. Account deletion remains deferred.
+MFA, passkeys, cloud/console recovery, owner recovery or transfer, external identity providers, and VyNode Connect are not implemented. Account deletion remains deferred.
+
+## Sharing and remote access
+
+Invitation and pairing raw secrets are never persisted: SHA-256 digests support equality checks while Argon2id remains the account password KDF. Pairing requires both short-code approval and possession of a separate high-entropy challenge, then issues normal rotating refresh credentials. Forwarded headers are ignored unless the socket peer matches an explicit trusted-proxy CIDR. Library grants are enforced server-side and revocation terminates affected playback.
 
 ## Curation privacy
 

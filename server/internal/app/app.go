@@ -15,6 +15,7 @@ import (
 	"github.com/vynode/media/server/internal/metadata"
 	"github.com/vynode/media/server/internal/observability"
 	"github.com/vynode/media/server/internal/playback"
+	"github.com/vynode/media/server/internal/sharing"
 	"log/slog"
 	"net/http"
 	"os"
@@ -28,6 +29,7 @@ type Runtime struct {
 	playback      *playback.Service
 	intelligence  *intelligence.Service
 	observability *observability.Service
+	sharing       *sharing.Service
 }
 
 func Initialize(ctx context.Context, cfg config.Config, logger *slog.Logger) (*Runtime, error) {
@@ -70,10 +72,20 @@ func Initialize(ctx context.Context, cfg config.Config, logger *slog.Logger) (*R
 	intelligenceService.ConfigureCollections(curationService)
 	intelligenceService.StartScheduler()
 	metadataService.ConfigureAutomation(intelligenceService.HandleEvent)
-	server := &http.Server{Addr: cfg.HTTPAddress, Handler: httpserver.NewHandler(logger, store, info, authService, mediaService, metadataService, playbackService, cfg.AllowedOrigin, intelligenceService, curationService, observabilityService), ReadHeaderTimeout: cfg.ReadHeaderTimeout, IdleTimeout: cfg.IdleTimeout}
-	return &Runtime{Server: server, store: store, playback: playbackService, intelligence: intelligenceService, observability: observabilityService}, nil
+	sharingService := sharing.New(store.DB, authService, info.InstanceID, info.ServerName, info.Version)
+	sharingService.ConfigureEvents(func(ctx context.Context, kind string, payload map[string]any, dedupe string) {
+		_, _ = observabilityService.Emit(ctx, kind, payload, dedupe)
+	})
+	if err := sharingService.StartRuntime(cfg.HTTPAddress); err != nil {
+		return fail(fmt.Errorf("initialize sharing network runtime: %w", err))
+	}
+	server := &http.Server{Addr: cfg.HTTPAddress, Handler: httpserver.NewHandler(logger, store, info, authService, mediaService, metadataService, playbackService, cfg.AllowedOrigin, intelligenceService, curationService, observabilityService, sharingService), ReadHeaderTimeout: cfg.ReadHeaderTimeout, IdleTimeout: cfg.IdleTimeout}
+	return &Runtime{Server: server, store: store, playback: playbackService, intelligence: intelligenceService, observability: observabilityService, sharing: sharingService}, nil
 }
 func (r *Runtime) Shutdown(ctx context.Context) error {
+	if r.sharing != nil {
+		r.sharing.Close()
+	}
 	if r.playback != nil {
 		r.playback.Close()
 	}
