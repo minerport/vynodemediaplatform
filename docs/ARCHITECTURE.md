@@ -52,10 +52,11 @@ submit isolated/idempotent jobs. Provider-neutral media entities will hold stabl
 VyNode IDs; external IDs and provenance remain separate. Metadata, artwork, local
 NFO, and embedded tags use prioritized provider interfaces.
 
-Playback requests will enter one explainable decision engine evaluating source,
+Phase 4 playback requests enter an explainable decision engine evaluating source,
 subtitle, HDR/Dolby Vision, bandwidth, user policy, client/device capabilities, and
-discovered server/GPU capability. Output is DIRECT_PLAY, DIRECT_STREAM, or TRANSCODE
-plus reason codes. All FFmpeg/FFprobe work stays behind one media-process adapter.
+discovered server/GPU capability. The implemented output is DIRECT_PLAY or UNSUPPORTED
+plus reason codes; Direct Stream and Transcode remain future modes. Original bytes are
+served by an authenticated single-range HTTP adapter. All future FFmpeg work stays behind one media-process adapter.
 Transcode sessions own HLS output, cancellation, throttling, and cleanup.
 
 ## Plugins and remote access

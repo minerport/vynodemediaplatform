@@ -8,6 +8,7 @@ import (
 	"github.com/vynode/media/server/internal/auth"
 	"github.com/vynode/media/server/internal/media"
 	"github.com/vynode/media/server/internal/metadata"
+	"github.com/vynode/media/server/internal/playback"
 	"log/slog"
 	"net/http"
 	"os"
@@ -34,6 +35,7 @@ type Handler struct {
 	auth          *auth.Service
 	media         *media.Service
 	metadata      *metadata.Service
+	playback      *playback.Service
 	allowedOrigin string
 }
 type errorResponse struct {
@@ -45,8 +47,8 @@ type apiError struct {
 	RequestID string `json:"requestId,omitempty"`
 }
 
-func NewHandler(logger *slog.Logger, readiness Readiness, info SystemInfo, authService *auth.Service, mediaService *media.Service, metadataService *metadata.Service, allowedOrigin string) http.Handler {
-	h := &Handler{logger: logger, readiness: readiness, info: info, auth: authService, media: mediaService, metadata: metadataService, allowedOrigin: allowedOrigin}
+func NewHandler(logger *slog.Logger, readiness Readiness, info SystemInfo, authService *auth.Service, mediaService *media.Service, metadataService *metadata.Service, playbackService *playback.Service, allowedOrigin string) http.Handler {
+	h := &Handler{logger: logger, readiness: readiness, info: info, auth: authService, media: mediaService, metadata: metadataService, playback: playbackService, allowedOrigin: allowedOrigin}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", h.health)
 	mux.HandleFunc("GET /ready", h.ready)
@@ -60,6 +62,9 @@ func NewHandler(logger *slog.Logger, readiness Readiness, info SystemInfo, authS
 	}
 	if metadataService != nil {
 		h.metadataRoutes(mux)
+	}
+	if playbackService != nil {
+		h.playbackRoutes(mux)
 	}
 	if info.WebDir != "" {
 		mux.Handle("/", spaHandler(info.WebDir))
@@ -131,7 +136,7 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "no-referrer")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; media-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'")
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 		next.ServeHTTP(w, r)
 	})
