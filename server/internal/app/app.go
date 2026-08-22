@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"github.com/vynode/media/server/internal/auth"
 	"github.com/vynode/media/server/internal/buildinfo"
 	"github.com/vynode/media/server/internal/config"
 	"github.com/vynode/media/server/internal/database"
@@ -32,8 +33,14 @@ func Initialize(ctx context.Context, cfg config.Config, logger *slog.Logger) (*R
 	if err != nil {
 		return fail(err)
 	}
-	info := httpserver.SystemInfo{Version: buildinfo.Version, Commit: buildinfo.Commit, OS: runtime.GOOS, Architecture: runtime.GOARCH, InstanceID: instanceID, ServerName: cfg.ServerName, DatabaseType: cfg.DatabaseType, StartedAt: time.Now()}
-	server := &http.Server{Addr: cfg.HTTPAddress, Handler: httpserver.NewHandler(logger, store, info), ReadHeaderTimeout: cfg.ReadHeaderTimeout, IdleTimeout: cfg.IdleTimeout}
+	serverName := cfg.ServerName
+	_ = store.DB.QueryRowContext(ctx, "SELECT value FROM server_settings WHERE key='server_name'").Scan(&serverName)
+	info := httpserver.SystemInfo{Version: buildinfo.Version, Commit: buildinfo.Commit, OS: runtime.GOOS, Architecture: runtime.GOARCH, InstanceID: instanceID, ServerName: serverName, DatabaseType: cfg.DatabaseType, WebDir: cfg.WebDir, StartedAt: time.Now()}
+	authService, err := auth.New(store.DB, cfg.ConfigDir, instanceID, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
+	if err != nil {
+		return fail(fmt.Errorf("initialize authentication: %w", err))
+	}
+	server := &http.Server{Addr: cfg.HTTPAddress, Handler: httpserver.NewHandler(logger, store, info, authService, cfg.AllowedOrigin), ReadHeaderTimeout: cfg.ReadHeaderTimeout, IdleTimeout: cfg.IdleTimeout}
 	return &Runtime{Server: server, store: store}, nil
 }
 func (r *Runtime) Shutdown(ctx context.Context) error {

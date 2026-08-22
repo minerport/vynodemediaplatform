@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -18,6 +19,10 @@ type Config struct {
 	ConfigDir         string
 	ServerName        string
 	DatabaseType      string
+	AccessTokenTTL    time.Duration
+	RefreshTokenTTL   time.Duration
+	AllowedOrigin     string
+	WebDir            string
 }
 
 func Load() (Config, error) {
@@ -29,6 +34,10 @@ func Load() (Config, error) {
 		ConfigDir:         envOr("VYNODE_CONFIG_DIR", "./data"),
 		ServerName:        envOr("VYNODE_SERVER_NAME", "VyNode Media"),
 		DatabaseType:      strings.ToLower(envOr("VYNODE_DATABASE_TYPE", "sqlite")),
+		AccessTokenTTL:    15 * time.Minute,
+		RefreshTokenTTL:   30 * 24 * time.Hour,
+		AllowedOrigin:     envOr("VYNODE_ALLOWED_ORIGIN", ""),
+		WebDir:            envOr("VYNODE_WEB_DIR", ""),
 	}
 	if strings.TrimSpace(cfg.ConfigDir) == "" {
 		return Config{}, fmt.Errorf("VYNODE_CONFIG_DIR must not be empty")
@@ -38,6 +47,12 @@ func Load() (Config, error) {
 	}
 	if cfg.DatabaseType != "sqlite" {
 		return Config{}, fmt.Errorf("VYNODE_DATABASE_TYPE currently supports only sqlite")
+	}
+	if cfg.AllowedOrigin != "" {
+		parsed, err := url.Parse(cfg.AllowedOrigin)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.Path != "" || strings.Contains(cfg.AllowedOrigin, "*") {
+			return Config{}, fmt.Errorf("VYNODE_ALLOWED_ORIGIN must be one absolute origin without wildcards")
+		}
 	}
 
 	if _, _, err := net.SplitHostPort(cfg.HTTPAddress); err != nil {

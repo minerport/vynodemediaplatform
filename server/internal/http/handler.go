@@ -5,8 +5,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"github.com/vynode/media/server/internal/auth"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"runtime/debug"
 	"time"
 )
@@ -19,13 +22,15 @@ const requestIDKey contextKey = "request_id"
 
 type Readiness interface{ Ready(context.Context) error }
 type SystemInfo struct {
-	Version, Commit, OS, Architecture, InstanceID, ServerName, DatabaseType string
-	StartedAt                                                               time.Time
+	Version, Commit, OS, Architecture, InstanceID, ServerName, DatabaseType, WebDir string
+	StartedAt                                                                       time.Time
 }
 type Handler struct {
-	logger    *slog.Logger
-	readiness Readiness
-	info      SystemInfo
+	logger        *slog.Logger
+	readiness     Readiness
+	info          SystemInfo
+	auth          *auth.Service
+	allowedOrigin string
 }
 type errorResponse struct {
 	Error apiError `json:"error"`
@@ -36,17 +41,40 @@ type apiError struct {
 	RequestID string `json:"requestId,omitempty"`
 }
 
-func NewHandler(logger *slog.Logger, readiness Readiness, info SystemInfo) http.Handler {
-	h := &Handler{logger: logger, readiness: readiness, info: info}
+func NewHandler(logger *slog.Logger, readiness Readiness, info SystemInfo, authService *auth.Service, allowedOrigin string) http.Handler {
+	h := &Handler{logger: logger, readiness: readiness, info: info, auth: authService, allowedOrigin: allowedOrigin}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", h.health)
 	mux.HandleFunc("GET /ready", h.ready)
 	mux.HandleFunc("GET /api/v1/system/version", h.version)
 	mux.HandleFunc("GET /api/v1/system/info", h.systemInfo)
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		writeError(w, r, http.StatusNotFound, "not_found", "The requested resource was not found.")
+	if authService != nil {
+		h.authRoutes(mux)
+	}
+	if info.WebDir != "" {
+		mux.Handle("/", spaHandler(info.WebDir))
+	} else {
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			writeError(w, r, http.StatusNotFound, "not_found", "The requested resource was not found.")
+		})
+	}
+	return requestID(recoverer(logger, requestLog(logger, securityHeaders(h.originGuard(mux)))))
+}
+
+func spaHandler(webDir string) http.Handler {
+	files := http.FileServer(http.Dir(webDir))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			http.NotFound(w, r)
+			return
+		}
+		path := filepath.Join(webDir, filepath.FromSlash(filepath.Clean("/"+r.URL.Path)))
+		if stat, err := os.Stat(path); err == nil && !stat.IsDir() {
+			files.ServeHTTP(w, r)
+			return
+		}
+		http.ServeFile(w, r, filepath.Join(webDir, "index.html"))
 	})
-	return requestID(recoverer(logger, requestLog(logger, securityHeaders(mux))))
 }
 func (h *Handler) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -93,6 +121,8 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'")
+		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 		next.ServeHTTP(w, r)
 	})
 }
