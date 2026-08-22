@@ -130,16 +130,23 @@ func (h *HLSManager) Ensure(r HLSRequest) error {
 				microseconds, _ := strconv.ParseInt(value, 10, 64)
 				encoded = float64(microseconds) / 1_000_000
 			case "speed":
-				speed, _ = strconv.ParseFloat(strings.TrimSuffix(value, "x"), 64)
+				if parsed, parseErr := strconv.ParseFloat(strings.TrimSuffix(value, "x"), 64); parseErr == nil {
+					speed = parsed
+				}
 			case "total_size":
 				outputBytes, _ = strconv.ParseInt(value, 10, 64)
 			case "progress":
+				outputBytes = h.outputSize(dir)
 				if r.Progress != nil {
 					r.Progress(encoded, speed, outputBytes)
 				}
 			}
 		}
 		err := cmd.Wait()
+		outputBytes = h.outputSize(dir)
+		if r.Progress != nil {
+			r.Progress(encoded, speed, outputBytes)
+		}
 		if ctx.Err() != nil {
 			err = nil
 		}
@@ -149,6 +156,23 @@ func (h *HLSManager) Ensure(r HLSRequest) error {
 		h.finish(r.SessionID, run)
 	}()
 	return nil
+}
+
+func (h *HLSManager) outputSize(dir string) int64 {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	var total int64
+	for _, entry := range entries {
+		if entry.IsDir() || !hlsName.MatchString(entry.Name()) {
+			continue
+		}
+		if info, err := entry.Info(); err == nil {
+			total += info.Size()
+		}
+	}
+	return total
 }
 func (h *HLSManager) args(r HLSRequest, dir string) []string {
 	p := r.Plan.Video

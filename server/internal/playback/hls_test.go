@@ -68,6 +68,24 @@ func TestStaleCleanupPreservesUnrelated(t *testing.T) {
 		t.Fatal("unrelated artifact removed")
 	}
 }
+
+func TestHLSOutputSizeCountsOnlyServedArtifacts(t *testing.T) {
+	dir := t.TempDir()
+	for name, content := range map[string]string{
+		"master.m3u8":        "1234",
+		"init.mp4":           "123",
+		"segment-000000.m4s": "12",
+		"unrelated.bin":      "123456789",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h := NewHLS("ffmpeg", t.TempDir(), 1)
+	if got := h.outputSize(dir); got != 9 {
+		t.Fatalf("output size = %d, want 9", got)
+	}
+}
 func TestHardwareReportsSoftwareWithoutClaimingDevices(t *testing.T) {
 	x := detectHardware(FFmpegCapabilities{Encoders: []string{"libx264", "h264_nvenc"}})
 	if !x[0].Available || x[0].Type != "SOFTWARE" {
