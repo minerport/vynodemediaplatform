@@ -1,5 +1,7 @@
 # Implementation roadmap
 
+Phase 5 provides Direct Stream, audio-only transcoding, text subtitles, supervised pipelines, and Continue Watching. Phase 6 is reserved for full video transcoding, adaptive HLS, quality selection, hardware acceleration, HDR/tone-mapping foundations, and resource management.
+
 | Phase | Scope | Exit condition |
 | --- | --- | --- |
 | 0 — Foundation | Architecture, lifecycle, identity, migrations, API contract, web shell, deployment/CI scaffolds | Tested portable server foundation; no fake media features |

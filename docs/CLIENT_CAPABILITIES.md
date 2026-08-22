@@ -1,5 +1,7 @@
 # Client capability profiles
 
+Schema version 2 adds `fragmentedMp4Support` and `maximumAudioChannels`. The browser profile reports fMP4 only with detected MP4 support and does not generically claim HEVC. Future native clients can truthfully advertise MKV, HEVC, DTS, TrueHD, or PGS and receive Direct Play.
+
 Every playback request carries schema version 1 of a reusable capability profile. It includes client and platform identity, containers, video/audio codecs, resolution limits, HDR modes, subtitle formats, and a Direct Play switch. Profiles affect compatibility only and never grant authorization.
 
 The browser adapter uses `HTMLMediaElement.canPlayType()` for conservative MP4 and WebM declarations. Unknown support is omitted rather than guessed from the User-Agent. HDR is not reported by the initial web adapter. Embedded track selection, external subtitles, Dolby Vision conversion, and tone mapping are not claimed.

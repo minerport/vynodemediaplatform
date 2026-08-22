@@ -43,3 +43,41 @@ func TestManualUnsupportedAndNoCompatible(t *testing.T) {
 		t.Fatal(d)
 	}
 }
+
+func TestPipelineDecisionHierarchy(t *testing.T) {
+	p := browser()
+	p.SchemaVersion = 2
+	p.FragmentedMP4 = true
+	p.MaxAudioChannels = 6
+	remux := Version{ID: "mkv", Container: "mkv", VideoCodec: "h264", AudioTracks: []Track{{ID: "a1", Codec: "aac", Channels: 6, Default: true}}, Available: true}
+	d := Decide(remux, p)
+	if d.Mode != DirectStream || d.Plan.Video.Action != "COPY" || d.Plan.Audio.Action != "COPY" || d.Plan.Container.Target != "mp4" {
+		t.Fatalf("remux=%+v", d)
+	}
+	audio := remux
+	audio.AudioTracks[0].Codec = "ac3"
+	d = Decide(audio, p)
+	if d.Mode != AudioTranscode || d.Plan.Video.Action != "COPY" || d.Plan.Audio.TargetCodec != "aac" || d.Plan.Audio.TargetChannels != 6 {
+		t.Fatalf("audio=%+v", d)
+	}
+	direct := Version{ID: "direct", Container: "mp4", VideoCodec: "h264", AudioTracks: []Track{{ID: "a", Codec: "aac", Default: true}}, Available: true}
+	v, d := Select([]Version{remux, direct}, p, "")
+	if v.ID != "direct" || d.Mode != DirectPlay {
+		t.Fatalf("priority=%s %+v", v.ID, d)
+	}
+}
+
+func TestTrackSelectionAndImageSubtitleTruth(t *testing.T) {
+	p := browser()
+	p.SchemaVersion = 2
+	p.FragmentedMP4 = true
+	v := Version{ID: "v", Container: "mkv", VideoCodec: "h264", Available: true, AudioTracks: []Track{{ID: "commentary", Codec: "aac", Commentary: true, Default: true}, {ID: "main", Codec: "aac"}}, SubtitleTracks: []Track{{ID: "pgs", Codec: "hdmv_pgs_subtitle", Usable: false}}}
+	d := DecideTracks(v, p, "", "")
+	if d.Plan.Audio.TrackID != "main" {
+		t.Fatal(d.Plan.Audio)
+	}
+	d = DecideTracks(v, p, "main", "pgs")
+	if d.Mode != Unsupported || d.Reasons[len(d.Reasons)-1].Code != "SUBTITLE_REQUIRES_VIDEO_TRANSCODE" {
+		t.Fatal(d)
+	}
+}
