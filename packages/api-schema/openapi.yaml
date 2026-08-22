@@ -48,13 +48,47 @@ paths:
     patch: { operationId: setUserEnabled, summary: Requires users.manage; OWNER cannot be changed, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: Status updated; disable revokes sessions } } }
   /api/v1/admin/audit:
     get: { operationId: listAuditEvents, summary: Requires audit.view, security: [{ bearerAuth: [] }], parameters: [{ name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }, { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }], responses: { '200': { description: Newest-first audit page } } }
+  /api/v1/libraries:
+    get: { operationId: listLibraries, summary: Requires libraries.view, security: [{ bearerAuth: [] }], responses: { '200': { description: Physical media libraries and inventory counts } } }
+    post: { operationId: createLibrary, summary: Requires libraries.manage, security: [{ bearerAuth: [] }], requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/LibraryCreate' } } } }, responses: { '201': { description: Library and validated sources created }, '400': { $ref: '#/components/responses/BadRequest' } } }
+  /api/v1/libraries/sources/validate:
+    post: { operationId: validateLibrarySource, summary: Requires libraries.manage; validates a server-visible absolute directory without exposing a filesystem browser, security: [{ bearerAuth: [] }], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [path], properties: { path: { type: string }, libraryId: { type: string, format: uuid } } } } } }, responses: { '200': { description: Existing readable non-forbidden directory }, '400': { $ref: '#/components/responses/BadRequest' } } }
+  /api/v1/libraries/{libraryId}:
+    parameters: [{ $ref: '#/components/parameters/LibraryId' }]
+    get: { operationId: getLibrary, summary: Requires libraries.view, security: [{ bearerAuth: [] }], responses: { '200': { description: Library and configured sources }, '404': { $ref: '#/components/responses/NotFound' } } }
+    patch: { operationId: updateLibrary, summary: Requires libraries.manage, security: [{ bearerAuth: [] }], responses: { '200': { description: Library updated } } }
+    delete: { operationId: deleteLibrary, summary: Requires libraries.manage; removes inventory only and never modifies media files, security: [{ bearerAuth: [] }], responses: { '204': { description: Library inventory removed; filesystem untouched } } }
+  /api/v1/libraries/{libraryId}/sources:
+    post: { operationId: addLibrarySource, summary: Requires libraries.manage, security: [{ bearerAuth: [] }], parameters: [{ $ref: '#/components/parameters/LibraryId' }], responses: { '201': { description: Validated source added } } }
+  /api/v1/libraries/{libraryId}/sources/{sourceId}:
+    delete: { operationId: removeLibrarySource, summary: Requires libraries.manage; filesystem untouched, security: [{ bearerAuth: [] }], parameters: [{ $ref: '#/components/parameters/LibraryId' }, { name: sourceId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: Source inventory removed } } }
+  /api/v1/libraries/{libraryId}/scan:
+    post: { operationId: startLibraryScan, summary: Requires libraries.scan; duplicate active scan returns 409, security: [{ bearerAuth: [] }], parameters: [{ $ref: '#/components/parameters/LibraryId' }], responses: { '202': { description: Background scan queued }, '409': { $ref: '#/components/responses/Conflict' }, '503': { description: FFprobe unavailable } } }
+  /api/v1/libraries/{libraryId}/scans/{jobId}:
+    get: { operationId: getLibraryScan, summary: Requires libraries.scan, security: [{ bearerAuth: [] }], parameters: [{ $ref: '#/components/parameters/LibraryId' }, { $ref: '#/components/parameters/JobId' }], responses: { '200': { description: Persisted scan state and counters } } }
+    delete: { operationId: cancelLibraryScan, summary: Requires libraries.scan, security: [{ bearerAuth: [] }], parameters: [{ $ref: '#/components/parameters/LibraryId' }, { $ref: '#/components/parameters/JobId' }], responses: { '204': { description: Cancellation signaled } } }
+  /api/v1/libraries/{libraryId}/items:
+    get: { operationId: listPhysicalMedia, summary: Requires media.inventory.view, security: [{ bearerAuth: [] }], parameters: [{ $ref: '#/components/parameters/LibraryId' }, { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }, { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }], responses: { '200': { description: Deterministically relative-path-sorted physical inventory page } } }
+  /api/v1/media/files/{fileId}:
+    get: { operationId: getPhysicalMediaFile, summary: Requires media.inventory.view, security: [{ bearerAuth: [] }], parameters: [{ name: fileId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: "Physical file, technical probe data, normalized streams, and preliminary filename hints" } } }
+  /api/v1/admin/system/media-probe:
+    get: { operationId: getMediaProbeCapability, summary: Requires security.view, security: [{ bearerAuth: [] }], responses: { '200': { description: Safe FFprobe availability and version } } }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
   responses:
+    BadRequest: { description: Validation failed, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    NotFound: { description: Resource not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
     Unauthorized: { description: Authentication failed, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
     Conflict: { description: State conflict, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  parameters:
+    LibraryId: { name: libraryId, in: path, required: true, schema: { type: string, format: uuid } }
+    JobId: { name: jobId, in: path, required: true, schema: { type: string, format: uuid } }
   schemas:
+    LibraryCreate:
+      type: object
+      required: [name, type]
+      properties: { name: { type: string, minLength: 1, maxLength: 100 }, type: { type: string, enum: [MOVIES, TV] }, enabled: { type: boolean, default: true }, sources: { type: array, items: { type: string } } }
     OwnerSetup:
       type: object
       required: [username, displayName, password]

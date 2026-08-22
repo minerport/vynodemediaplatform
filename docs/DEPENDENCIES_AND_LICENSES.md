@@ -11,7 +11,8 @@
 | TypeScript | Type checking | Apache-2.0 |
 | Vitest | Web unit tests | MIT |
 | Redocly CLI | OpenAPI validation | MIT |
-| Distroless static Debian image | Minimal runtime | Apache-2.0 and component licenses |
+| Debian Bookworm slim | Minimal container runtime and trusted package base | Debian component licenses |
+| FFmpeg / FFprobe Debian package | Read-only technical media inspection | GPL/LGPL depending on Debian build configuration; release notices and source-offer obligations apply |
 | Go Alpine image | Container build toolchain | Go BSD-3-Clause plus Alpine licenses |
 | GitHub checkout/setup actions | CI checkout and Go/Node setup | MIT |
 | Docker Buildx/build-push actions | CI image build validation | Apache-2.0 |

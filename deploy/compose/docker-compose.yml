@@ -3,7 +3,7 @@ services:
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile
-    image: vynode-media:phase0
+    image: vynode-media:phase2
     container_name: vynode-media
     environment:
       VYNODE_SERVER_NAME: VyNode Media
@@ -21,4 +21,3 @@ services:
 volumes:
   vynode-config:
   vynode-transcode:
-

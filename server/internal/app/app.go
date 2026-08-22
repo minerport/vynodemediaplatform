@@ -9,8 +9,10 @@ import (
 	"github.com/vynode/media/server/internal/database"
 	httpserver "github.com/vynode/media/server/internal/http"
 	"github.com/vynode/media/server/internal/identity"
+	"github.com/vynode/media/server/internal/media"
 	"log/slog"
 	"net/http"
+	"os"
 	"runtime"
 	"time"
 )
@@ -40,7 +42,9 @@ func Initialize(ctx context.Context, cfg config.Config, logger *slog.Logger) (*R
 	if err != nil {
 		return fail(fmt.Errorf("initialize authentication: %w", err))
 	}
-	server := &http.Server{Addr: cfg.HTTPAddress, Handler: httpserver.NewHandler(logger, store, info, authService, cfg.AllowedOrigin), ReadHeaderTimeout: cfg.ReadHeaderTimeout, IdleTimeout: cfg.IdleTimeout}
+	probe := media.NewFFprobe(cfg.FFprobePath, cfg.ProbeConcurrency)
+	mediaService := media.New(store.DB, probe, cfg.ConfigDir, os.Getenv("VYNODE_TRANSCODE_DIR"))
+	server := &http.Server{Addr: cfg.HTTPAddress, Handler: httpserver.NewHandler(logger, store, info, authService, mediaService, cfg.AllowedOrigin), ReadHeaderTimeout: cfg.ReadHeaderTimeout, IdleTimeout: cfg.IdleTimeout}
 	return &Runtime{Server: server, store: store}, nil
 }
 func (r *Runtime) Shutdown(ctx context.Context) error {

@@ -8,7 +8,14 @@ The socket peer address drives throttling and audit context. `Forwarded`, `X-For
 
 Responses set CSP, frame denial, MIME sniffing protection, no-referrer policy, restricted browser permissions, and same-origin resource policy. Stable API errors omit database and filesystem details. Audit data contains only safe event, actor/target, request, outcome, and limited client context.
 
+## Physical media safety
+
+Physical-library administration is OWNER/ADMIN-only. Source validation requires
+absolute readable server-visible directories and rejects configuration/transcode
+overlap. Scanning skips symlinks and never writes user media. FFprobe uses structured
+arguments without a shell, timeout/cancellation, and bounded output. An unavailable
+root preserves prior inventory rather than causing mass missing-file updates.
+
 ## Not yet implemented
 
 MFA, passkeys, cloud/console recovery, owner recovery or transfer, external identity providers, trusted-proxy parsing, VyNode Connect, and device pairing are not implemented. Account deletion remains deferred.
-

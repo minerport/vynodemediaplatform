@@ -9,13 +9,17 @@ const (
 	RoleUser  Role = "USER"
 )
 const (
-	CapServerManage   Capability = "server.manage"
-	CapUsersManage    Capability = "users.manage"
-	CapSessionsManage Capability = "sessions.manage"
-	CapSecurityView   Capability = "security.view"
-	CapAuditView      Capability = "audit.view"
+	CapServerManage       Capability = "server.manage"
+	CapUsersManage        Capability = "users.manage"
+	CapSessionsManage     Capability = "sessions.manage"
+	CapSecurityView       Capability = "security.view"
+	CapAuditView          Capability = "audit.view"
+	CapLibrariesView      Capability = "libraries.view"
+	CapLibrariesManage    Capability = "libraries.manage"
+	CapLibrariesScan      Capability = "libraries.scan"
+	CapMediaInventoryView Capability = "media.inventory.view"
 )
 
-var grants = map[Role]map[Capability]bool{RoleOwner: {CapServerManage: true, CapUsersManage: true, CapSessionsManage: true, CapSecurityView: true, CapAuditView: true}, RoleAdmin: {CapUsersManage: true, CapSessionsManage: true, CapSecurityView: true, CapAuditView: true}, RoleUser: {}}
+var grants = map[Role]map[Capability]bool{RoleOwner: {CapServerManage: true, CapUsersManage: true, CapSessionsManage: true, CapSecurityView: true, CapAuditView: true, CapLibrariesView: true, CapLibrariesManage: true, CapLibrariesScan: true, CapMediaInventoryView: true}, RoleAdmin: {CapUsersManage: true, CapSessionsManage: true, CapSecurityView: true, CapAuditView: true, CapLibrariesView: true, CapLibrariesManage: true, CapLibrariesScan: true, CapMediaInventoryView: true}, RoleUser: {}}
 
 func Allowed(role Role, capability Capability) bool { return grants[role][capability] }

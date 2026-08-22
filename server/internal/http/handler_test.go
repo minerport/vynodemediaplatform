@@ -19,7 +19,7 @@ type readyStub struct{ err error }
 
 func (s readyStub) Ready(context.Context) error { return s.err }
 func handler(ready error) http.Handler {
-	return NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), readyStub{ready}, SystemInfo{Version: "0.1.0", Commit: "test", OS: "testos", Architecture: "testarch", InstanceID: "instance", ServerName: "Test", DatabaseType: "sqlite", StartedAt: time.Now()}, nil, "")
+	return NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), readyStub{ready}, SystemInfo{Version: "0.1.0", Commit: "test", OS: "testos", Architecture: "testarch", InstanceID: "instance", ServerName: "Test", DatabaseType: "sqlite", StartedAt: time.Now()}, nil, nil, "")
 }
 func request(t *testing.T, path string, ready error) *httptest.ResponseRecorder {
 	t.Helper()
@@ -44,7 +44,7 @@ func TestSPAHandlerServesAssetsAndProtectedRouteFallback(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "assets", "app.js"), []byte("console.log('vynode')"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	h := NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), readyStub{}, SystemInfo{WebDir: dir, StartedAt: time.Now()}, nil, "")
+	h := NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), readyStub{}, SystemInfo{WebDir: dir, StartedAt: time.Now()}, nil, nil, "")
 	for _, path := range []string{"/home", "/account", "/security/sessions"} {
 		rr := httptest.NewRecorder()
 		h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, path, nil))
@@ -108,7 +108,7 @@ func TestAcceptsSafeClientRequestID(t *testing.T) {
 }
 
 func TestOriginAndSecurityPolicy(t *testing.T) {
-	h := NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), readyStub{}, SystemInfo{StartedAt: time.Now()}, nil, "https://media.example")
+	h := NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), readyStub{}, SystemInfo{StartedAt: time.Now()}, nil, nil, "https://media.example")
 	foreign := httptest.NewRequest(http.MethodPost, "/missing", nil)
 	foreign.Header.Set("Origin", "https://evil.example")
 	rr := httptest.NewRecorder()

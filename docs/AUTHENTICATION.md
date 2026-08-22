@@ -13,3 +13,7 @@ The browser keeps access tokens only in memory. Its refresh credential is an Htt
 Unsafe cookie requests use same-origin validation; exact `VYNODE_ALLOWED_ORIGIN` supports a separate trusted UI origin. Missing Origin is accepted for native clients using bearer credentials. `/config/vynode.db` and `/config/auth-signing.key` persist together. Authentication never requires Internet access.
 
 OWNER has `server.manage`, `users.manage`, `sessions.manage`, `security.view`, and `audit.view`; ADMIN has all except `server.manage`; USER has no administrative capabilities. All users retain self-service account/session operations. Owner creation, disablement, deletion, and transfer are not Phase 1 administrative operations.
+
+Phase 2 adds `libraries.view`, `libraries.manage`, `libraries.scan`, and
+`media.inventory.view` to OWNER and ADMIN. USER receives none of these capabilities,
+so normal users cannot probe server paths or view physical filesystem inventory.

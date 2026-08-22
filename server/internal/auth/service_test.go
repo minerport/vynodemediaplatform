@@ -126,6 +126,11 @@ func TestRBAC(t *testing.T) {
 	if !Allowed(RoleOwner, CapServerManage) || Allowed(RoleAdmin, CapServerManage) || Allowed(RoleUser, CapUsersManage) {
 		t.Fatal("invalid grants")
 	}
+	for _, capability := range []Capability{CapLibrariesView, CapLibrariesManage, CapLibrariesScan, CapMediaInventoryView} {
+		if !Allowed(RoleOwner, capability) || !Allowed(RoleAdmin, capability) || Allowed(RoleUser, capability) {
+			t.Fatalf("invalid media grant for %s", capability)
+		}
+	}
 }
 func TestTokenExpiryLogoutOthersAndPassword(t *testing.T) {
 	s, close := testService(t)
