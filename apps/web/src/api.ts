@@ -214,6 +214,8 @@ export type PlaybackTrack = {
   channels?: number;
   default: boolean;
   commentary?: boolean;
+  forced?: boolean;
+  hearingImpaired?: boolean;
   usable: boolean;
   reason?: string;
   source?: string;
@@ -257,7 +259,17 @@ export type PlaybackSession = {
   hlsUrl?: string;
   availableQualities?: Array<{id:string;label:string;maxWidth:number;maxHeight:number;targetVideoBitrate:number}>;
   subtitleUrl?: string;
+  selectedAudioTrack?: PlaybackTrack;
+  selectedSubtitleTrack?: PlaybackTrack;
+  markers?: MediaMarker[];
+  playbackContextId?: string;
+  networkContext?: "LOCAL"|"REMOTE";
+  effectiveBandwidthLimit?: number;
+  navigation?: {autoplay:boolean;countdownSeconds:number;previous?:NavigationItem;next?:NavigationItem};
 };
+export type NavigationItem={logicalId:string;showId:string;showTitle:string;title:string;seasonNumber:number;episodeNumber:number;available:boolean};
+export type PlaybackPreferences={preferredAudioLanguages:string[];preferredSubtitleLanguages:string[];subtitleMode:"OFF"|"ALWAYS"|"WHEN_AUDIO_NOT_PREFERRED"|"FORCED_ONLY";autoplayNextEpisode:boolean;localQualityId:string;remoteQualityId:string;avoidCommentary:boolean;preferHearingImpaired:boolean};
+export type MediaMarker={id:string;logicalType:"MOVIE"|"EPISODE";logicalId:string;type:"INTRO"|"RECAP"|"CREDITS"|"POST_CREDITS"|"CUSTOM";start:number;end:number;source:string;confidence?:number};
 export type ContinueItem = {
   logicalType: "MOVIE" | "EPISODE";
   logicalId: string;
@@ -507,6 +519,7 @@ export const api = {
     selectedSubtitleTrackId = "",
     qualityId = "",
     startPosition = 0,
+    playbackContextId = "",
   ) =>
     call<PlaybackSession>("/api/v1/playback/sessions", {
       method: "POST",
@@ -519,11 +532,20 @@ export const api = {
         selectedSubtitleTrackId,
         qualityId,
         startPosition,
+        playbackContextId,
         capabilities: browserCapabilities(),
       }),
     }),
   continueWatching: () =>
     call<{ items: ContinueItem[] }>("/api/v1/playback/continue-watching"),
+  playbackPreferences:()=>call<PlaybackPreferences>("/api/v1/account/playback-preferences"),
+  setPlaybackPreferences:(body:PlaybackPreferences)=>call<PlaybackPreferences>("/api/v1/account/playback-preferences",{method:"PATCH",body:JSON.stringify(body)}),
+  markers:(type:"MOVIE"|"EPISODE",id:string)=>call<{markers:MediaMarker[]}>(`/api/v1/playback/${type}/${id}/markers`),
+  saveMarker:(body:Partial<MediaMarker>)=>call<MediaMarker>("/api/v1/admin/media-markers",{method:"POST",body:JSON.stringify(body)}),
+  updateMarker:(id:string,body:Partial<MediaMarker>)=>call<MediaMarker>(`/api/v1/admin/media-markers/${id}`,{method:"PATCH",body:JSON.stringify(body)}),
+  deleteMarker:(id:string)=>call<void>(`/api/v1/admin/media-markers/${id}`,{method:"DELETE"}),
+  dismissContinue:(type:"MOVIE"|"EPISODE",id:string)=>call<void>(`/api/v1/playback/continue-watching/items/${type}/${id}`,{method:"DELETE"}),
+  startOver:(type:"MOVIE"|"EPISODE",id:string)=>call<void>(`/api/v1/playback/${type}/${id}/start-over`,{method:"POST"}),
   updatePlayback: (
     id: string,
     state: string,

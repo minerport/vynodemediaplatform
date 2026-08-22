@@ -77,11 +77,52 @@ func (s *Service) Start(ctx context.Context, userID, authSessionID string, in St
 	if err != nil {
 		return Session{}, err
 	}
+	prefs, err := s.Preferences(ctx, userID)
+	if err != nil {
+		return Session{}, err
+	}
+	if in.QualityID == "" {
+		if in.Network == NetworkRemote {
+			in.QualityID = prefs.RemoteQualityID
+		} else {
+			in.QualityID = prefs.LocalQualityID
+		}
+		if in.QualityID == "auto" {
+			in.QualityID = ""
+		}
+	}
 	limit := in.BandwidthLimit
 	if in.Network == NetworkRemote && limit <= 0 {
 		limit = s.remoteBitrate
 	}
-	selected, decision := SelectPolicy(versions, in.Capabilities, in.RequestedVersionID, in.SelectedAudioTrackID, in.SelectedSubtitleTrackID, in.QualityID, limit)
+	selected, _ := SelectPolicy(versions, in.Capabilities, in.RequestedVersionID, "", "", in.QualityID, limit)
+	if selected.ID == "" {
+		selected, _ = SelectPolicy(versions, in.Capabilities, in.RequestedVersionID, in.SelectedAudioTrackID, in.SelectedSubtitleTrackID, in.QualityID, limit)
+	}
+	audioID, subtitleID := in.SelectedAudioTrackID, in.SelectedSubtitleTrackID
+	if semantic, ok := findSemanticTrack(versions, audioID); ok {
+		if match, found := matchTrack(selected.AudioTracks, semantic); found {
+			audioID = match.ID
+		}
+	}
+	if audioID == "" {
+		if match, found := semanticAudio(selected.AudioTracks, prefs.AudioLanguages, prefs.AvoidCommentary); found {
+			audioID = match.ID
+		}
+	}
+	selectedAudio, _ := findTrack(selected.AudioTracks, audioID)
+	if semantic, ok := findSemanticTrack(versions, subtitleID); ok {
+		if match, found := matchTrack(selected.SubtitleTracks, semantic); found {
+			subtitleID = match.ID
+		}
+	}
+	if subtitleID == "" {
+		if match, found := semanticSubtitle(selected.SubtitleTracks, selectedAudio, prefs); found {
+			subtitleID = match.ID
+		}
+	}
+	selectedSubtitle, hasSubtitle := findTrack(selected.SubtitleTracks, subtitleID)
+	selected, decision := SelectPolicy(versions, in.Capabilities, selected.ID, audioID, subtitleID, in.QualityID, limit)
 	if decision.Mode != DirectPlay && decision.Mode != Unsupported && (s.pipeline == nil || !s.pipeline.Available()) {
 		decision = reject(decision, "FFMPEG_UNAVAILABLE", "")
 	}
@@ -98,6 +139,32 @@ func (s *Service) Start(ctx context.Context, userID, authSessionID string, in St
 	token := base64.RawURLEncoding.EncodeToString(tokenRaw)
 	sum := sha256.Sum256([]byte(token))
 	sessionID := id()
+	contextID := in.ContextID
+	if contextID != "" {
+		var owned int
+		_ = s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM playback_contexts WHERE id=? AND user_id=? AND active=1", contextID, userID).Scan(&owned)
+		if owned == 0 {
+			return Session{}, ErrForbidden
+		}
+	}
+	if contextID == "" {
+		contextID = id()
+		contextType := in.ContextType
+		if contextType == "" {
+			if in.LogicalType == "EPISODE" {
+				contextType = "TV_SERIES"
+			} else {
+				contextType = "MOVIE_SINGLE"
+			}
+		}
+		if !contains([]string{"MOVIE_SINGLE", "TV_SERIES", "TV_SEASON", "CONTINUE_WATCHING"}, contextType) {
+			return Session{}, ErrValidation
+		}
+		_, err = s.db.ExecContext(ctx, "INSERT INTO playback_contexts(id,user_id,context_type,root_id,active,created_at,updated_at) VALUES(?,?,?,?,1,?,?)", contextID, userID, contextType, in.LogicalID, stamp(now), stamp(now))
+		if err != nil {
+			return Session{}, err
+		}
+	}
 	var duration float64
 	if selected.ID != "" {
 		_ = s.db.QueryRowContext(ctx, "SELECT COALESCE(duration_seconds,0) FROM media_files WHERE id=?", selected.FileID).Scan(&duration)
@@ -130,7 +197,7 @@ func (s *Service) Start(ctx context.Context, userID, authSessionID string, in St
 		state = Error
 	}
 	planJSON, _ := json.Marshal(decision.Plan)
-	_, err = tx.ExecContext(ctx, `INSERT INTO playback_sessions(id,user_id,auth_session_id,capability_id,logical_type,logical_id,media_association_id,media_file_id,mode,state,position_seconds,duration_seconds,started_at,last_activity_at,ended_at,error_code,media_token_hash,media_token_expires_at,selected_audio_track_id,selected_subtitle_track_id,pipeline_plan_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, sessionID, userID, authSessionID, capID, in.LogicalType, in.LogicalID, null(selected.ID), null(selected.FileID), decision.Mode, state, resume, duration, stamp(now), stamp(now), func() any {
+	_, err = tx.ExecContext(ctx, `INSERT INTO playback_sessions(id,user_id,auth_session_id,capability_id,logical_type,logical_id,media_association_id,media_file_id,mode,state,position_seconds,duration_seconds,started_at,last_activity_at,ended_at,error_code,media_token_hash,media_token_expires_at,selected_audio_track_id,selected_subtitle_track_id,pipeline_plan_json,playback_context_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, sessionID, userID, authSessionID, capID, in.LogicalType, in.LogicalID, null(selected.ID), null(selected.FileID), decision.Mode, state, resume, duration, stamp(now), stamp(now), func() any {
 		if state == Error {
 			return stamp(now)
 		}
@@ -140,7 +207,7 @@ func (s *Service) Start(ctx context.Context, userID, authSessionID string, in St
 			return decision.Reasons[0].Code
 		}
 		return nil
-	}(), hex.EncodeToString(sum[:]), stamp(now.Add(4*time.Hour)), null(decision.Plan.Audio.TrackID), null(in.SelectedSubtitleTrackID), string(planJSON))
+	}(), hex.EncodeToString(sum[:]), stamp(now.Add(4*time.Hour)), null(decision.Plan.Audio.TrackID), null(subtitleID), string(planJSON), contextID)
 	if err != nil {
 		return Session{}, err
 	}
@@ -150,7 +217,13 @@ func (s *Service) Start(ctx context.Context, userID, authSessionID string, in St
 	if err = tx.Commit(); err != nil {
 		return Session{}, err
 	}
-	out := Session{ID: sessionID, UserID: userID, LogicalType: in.LogicalType, LogicalID: in.LogicalID, MediaVersion: selected, Decision: decision, State: state, Position: resume, Duration: duration, ResumePosition: resume, StartedAt: stamp(now), LastActivityAt: stamp(now)}
+	markers, _ := s.Markers(ctx, in.LogicalType, in.LogicalID)
+	navigation, _ := s.Navigation(ctx, userID, in.LogicalType, in.LogicalID)
+	out := Session{ID: sessionID, UserID: userID, LogicalType: in.LogicalType, LogicalID: in.LogicalID, MediaVersion: selected, Decision: decision, State: state, Position: resume, Duration: duration, ResumePosition: resume, StartedAt: stamp(now), LastActivityAt: stamp(now), SelectedAudio: selectedAudio, Markers: markers, Navigation: navigation, ContextID: contextID, Network: in.Network, EffectiveLimit: limit}
+	if hasSubtitle {
+		out.SelectedSubtitle = &selectedSubtitle
+	}
+	_, _ = s.db.ExecContext(ctx, "DELETE FROM continue_watching_dismissals WHERE user_id=? AND logical_type=? AND logical_id=?", userID, in.LogicalType, in.LogicalID)
 	if decision.Mode != Unsupported {
 		out.MediaURL = "/api/v1/playback/sessions/" + sessionID + "/media?token=" + token
 	}
@@ -159,8 +232,8 @@ func (s *Service) Start(ctx context.Context, userID, authSessionID string, in St
 		out.MediaURL = ""
 		out.Qualities = QualityProfiles(selected)
 	}
-	if in.SelectedSubtitleTrackID != "" && decision.Mode != Unsupported {
-		out.SubtitleURL = "/api/v1/playback/sessions/" + sessionID + "/subtitles/" + in.SelectedSubtitleTrackID
+	if subtitleID != "" && decision.Mode != Unsupported {
+		out.SubtitleURL = "/api/v1/playback/sessions/" + sessionID + "/subtitles/" + subtitleID
 	}
 	return out, nil
 }
@@ -193,17 +266,21 @@ func (s *Service) Versions(ctx context.Context, kind, logicalID string) ([]Versi
 	}
 	rows.Close()
 	for i := range out {
-		arows, e := s.db.QueryContext(ctx, "SELECT id,stream_index,COALESCE(codec,''),COALESCE(language,''),COALESCE(title,''),COALESCE(channels,0),is_default,commentary FROM media_streams WHERE media_file_id=? AND UPPER(stream_type)='AUDIO' ORDER BY is_default DESC,stream_index", out[i].FileID)
+		arows, e := s.db.QueryContext(ctx, "SELECT id,stream_index,COALESCE(codec,''),COALESCE(language,''),COALESCE(title,''),COALESCE(channels,0),is_default,commentary,hearing_impaired FROM media_streams WHERE media_file_id=? AND UPPER(stream_type)='AUDIO' ORDER BY is_default DESC,stream_index", out[i].FileID)
 		if e != nil {
 			return nil, e
 		}
 		for arows.Next() {
 			var a Track
-			if e = arows.Scan(&a.ID, &a.StreamIndex, &a.Codec, &a.Language, &a.Title, &a.Channels, &a.Default, &a.Commentary); e != nil {
+			if e = arows.Scan(&a.ID, &a.StreamIndex, &a.Codec, &a.Language, &a.Title, &a.Channels, &a.Default, &a.Commentary, &a.HearingImpaired); e != nil {
 				arows.Close()
 				return nil, e
 			}
 			a.Kind = "AUDIO"
+			a.Language = normalizeLanguage(a.Language)
+			if strings.Contains(strings.ToLower(a.Title), "commentary") {
+				a.Commentary = true
+			}
 			a.Usable = true
 			out[i].AudioTracks = append(out[i].AudioTracks, a)
 			if a.Codec != "" && !contains(out[i].AudioCodecs, a.Codec) {
@@ -211,17 +288,18 @@ func (s *Service) Versions(ctx context.Context, kind, logicalID string) ([]Versi
 			}
 		}
 		arows.Close()
-		srows, e := s.db.QueryContext(ctx, "SELECT id,stream_index,COALESCE(codec,''),COALESCE(language,''),COALESCE(title,''),is_default,is_forced FROM media_streams WHERE media_file_id=? AND UPPER(stream_type)='SUBTITLE' ORDER BY stream_index", out[i].FileID)
+		srows, e := s.db.QueryContext(ctx, "SELECT id,stream_index,COALESCE(codec,''),COALESCE(language,''),COALESCE(title,''),is_default,is_forced,hearing_impaired FROM media_streams WHERE media_file_id=? AND UPPER(stream_type)='SUBTITLE' ORDER BY stream_index", out[i].FileID)
 		if e != nil {
 			return nil, e
 		}
 		for srows.Next() {
 			var t Track
-			if e = srows.Scan(&t.ID, &t.StreamIndex, &t.Codec, &t.Language, &t.Title, &t.Default, &t.Forced); e != nil {
+			if e = srows.Scan(&t.ID, &t.StreamIndex, &t.Codec, &t.Language, &t.Title, &t.Default, &t.Forced, &t.HearingImpaired); e != nil {
 				srows.Close()
 				return nil, e
 			}
 			t.Kind = "SUBTITLE"
+			t.Language = normalizeLanguage(t.Language)
 			t.Source = "EMBEDDED"
 			t.Usable = textSubtitle(t.Codec)
 			if !t.Usable {
@@ -328,7 +406,11 @@ func (s *Service) Update(ctx context.Context, userID, sessionID string, p Progre
 	if p.Duration > 0 && p.Position > p.Duration+30 {
 		return ErrValidation
 	}
-	watched := p.State == Completed || (p.Duration > 0 && p.Position/p.Duration >= .9)
+	var creditsStart sql.NullFloat64
+	var postCredits int
+	_ = s.db.QueryRowContext(ctx, "SELECT MIN(start_seconds) FROM media_markers WHERE logical_type=? AND logical_id=? AND marker_type='CREDITS'", logicalType, logicalID).Scan(&creditsStart)
+	_ = s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_markers WHERE logical_type=? AND logical_id=? AND marker_type='POST_CREDITS'", logicalType, logicalID).Scan(&postCredits)
+	watched := p.State == Completed || (creditsStart.Valid && postCredits == 0 && p.Position >= creditsStart.Float64) || (!creditsStart.Valid && p.Duration > 0 && p.Position/p.Duration >= .9)
 	if watched {
 		p.State = Completed
 		p.Position = 0
@@ -363,19 +445,28 @@ func (s *Service) Update(ctx context.Context, userID, sessionID string, p Progre
 	if err != nil {
 		return err
 	}
-	event := map[State]string{Playing: "PLAYBACK_RESUMED", Paused: "PLAYBACK_PAUSED", Stopped: "PLAYBACK_STOPPED", Completed: "PLAYBACK_COMPLETED", Error: "PLAYBACK_ERROR"}[p.State]
-	_, err = tx.ExecContext(ctx, "INSERT INTO playback_history(playback_session_id,user_id,event_type,position_seconds,created_at) VALUES(?,?,?,?,?)", sessionID, userID, event, p.Position, stamp(now))
-	if err != nil {
-		return err
+	if state != string(p.State) || p.State == Stopped || p.State == Completed || p.State == Error {
+		event := map[State]string{Playing: "PLAYBACK_RESUMED", Paused: "PLAYBACK_PAUSED", Stopped: "PLAYBACK_STOPPED", Completed: "PLAYBACK_COMPLETED", Error: "PLAYBACK_ERROR"}[p.State]
+		_, err = tx.ExecContext(ctx, "INSERT INTO playback_history(playback_session_id,user_id,event_type,position_seconds,created_at) VALUES(?,?,?,?,?)", sessionID, userID, event, p.Position, stamp(now))
+		if err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
 func (s *Service) Stop(ctx context.Context, userID, sessionID string) error {
 	var position, duration float64
-	if s.db.QueryRowContext(ctx, "SELECT position_seconds,duration_seconds FROM playback_sessions WHERE id=? AND user_id=?", sessionID, userID).Scan(&position, &duration) != nil {
+	var contextID sql.NullString
+	if s.db.QueryRowContext(ctx, "SELECT position_seconds,duration_seconds,playback_context_id FROM playback_sessions WHERE id=? AND user_id=?", sessionID, userID).Scan(&position, &duration, &contextID) != nil {
 		return ErrForbidden
 	}
-	return s.Update(ctx, userID, sessionID, Progress{State: Stopped, Position: position, Duration: duration})
+	if err := s.Update(ctx, userID, sessionID, Progress{State: Stopped, Position: position, Duration: duration}); err != nil {
+		return err
+	}
+	if contextID.Valid {
+		_, _ = s.db.ExecContext(ctx, "UPDATE playback_contexts SET active=0,ended_at=?,updated_at=? WHERE id=? AND user_id=?", stamp(s.now()), stamp(s.now()), contextID.String, userID)
+	}
+	return nil
 }
 func (s *Service) MarkWatched(ctx context.Context, userID, kind, logicalID string, watched bool) error {
 	if kind != "MOVIE" && kind != "EPISODE" {
@@ -598,7 +689,7 @@ func (s *Service) Subtitle(ctx context.Context, sessionID, token, trackID string
 	return s.pipeline.ConvertEmbeddedSubtitle(ctx, a.Path, index)
 }
 func (s *Service) ContinueWatching(ctx context.Context, userID string) ([]ContinueItem, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT p.logical_type,p.logical_id,CASE p.logical_type WHEN 'MOVIE' THEN COALESCE((SELECT title FROM movies WHERE id=p.logical_id),'Unknown movie') ELSE COALESCE((SELECT title FROM episodes WHERE id=p.logical_id),'Unknown episode') END,p.position_seconds,p.duration_seconds,p.last_played_at FROM user_media_progress p WHERE p.user_id=? AND p.watched=0 AND p.position_seconds>0 AND p.duration_seconds>0 ORDER BY p.last_played_at DESC LIMIT 30`, userID)
+	rows, e := s.db.QueryContext(ctx, `SELECT p.logical_type,p.logical_id,CASE p.logical_type WHEN 'MOVIE' THEN COALESCE((SELECT title FROM movies WHERE id=p.logical_id),'Unknown movie') ELSE COALESCE((SELECT title FROM episodes WHERE id=p.logical_id),'Unknown episode') END,p.position_seconds,p.duration_seconds,p.last_played_at FROM user_media_progress p WHERE p.user_id=? AND p.watched=0 AND p.position_seconds>0 AND p.duration_seconds>0 AND NOT EXISTS(SELECT 1 FROM continue_watching_dismissals d WHERE d.user_id=p.user_id AND d.logical_type=p.logical_type AND d.logical_id=p.logical_id) ORDER BY p.last_played_at DESC LIMIT 30`, userID)
 	if e != nil {
 		return nil, e
 	}
@@ -642,6 +733,7 @@ func (s *Service) AbandonStale(ctx context.Context) {
 	now := stamp(s.now())
 	_, _ = s.db.ExecContext(ctx, "UPDATE playback_sessions SET state='STOPPED',completion_reason='SERVER_RESTART_OR_INACTIVE',ended_at=? WHERE state IN ('STARTING','PLAYING','PAUSED') AND last_activity_at<?", now, cut)
 	_, _ = s.db.ExecContext(ctx, "UPDATE playback_sessions SET state='STOPPED',completion_reason='SERVER_RESTART',ended_at=? WHERE state IN ('STARTING','PLAYING','PAUSED')", now)
+	_, _ = s.db.ExecContext(ctx, "UPDATE playback_contexts SET active=0,ended_at=?,updated_at=? WHERE active=1 AND NOT EXISTS(SELECT 1 FROM playback_sessions p WHERE p.playback_context_id=playback_contexts.id AND p.state IN ('STARTING','PLAYING','PAUSED'))", now, now)
 }
 func (s *Service) Active(ctx context.Context) ([]Session, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT p.id,p.logical_type,p.logical_id,p.state,p.position_seconds,p.duration_seconds,p.started_at,p.last_activity_at,u.display_name,c.client_name,c.platform,CASE p.logical_type WHEN 'MOVIE' THEN COALESCE((SELECT title FROM movies WHERE id=p.logical_id),'Unknown movie') ELSE COALESCE((SELECT e.title FROM episodes e WHERE e.id=p.logical_id),'Unknown episode') END,COALESCE(f.resolution_class,''),COALESCE((SELECT codec FROM media_streams WHERE media_file_id=f.id AND UPPER(stream_type)='VIDEO' ORDER BY stream_index LIMIT 1),''),p.mode,p.pipeline_plan_json FROM playback_sessions p JOIN users u ON u.id=p.user_id JOIN client_capabilities c ON c.id=p.capability_id LEFT JOIN media_files f ON f.id=p.media_file_id WHERE p.state IN ('STARTING','PLAYING','PAUSED') AND p.last_activity_at>? ORDER BY p.started_at`, stamp(s.now().Add(-s.inactivity)))

@@ -130,6 +130,20 @@ paths:
     get: { operationId: deliverPlaybackSubtitle, summary: Session-authorized sanitized WebVTT, parameters: [{ $ref: '#/components/parameters/PlaybackSessionId' }, { name: trackId, in: path, required: true, schema: { type: string } }], responses: { '200': { description: WebVTT subtitle, content: { text/vtt: {} } }, '403': { description: Invalid playback authorization } } }
   /api/v1/playback/continue-watching:
     get: { operationId: continueWatching, summary: Current user's incomplete local progress, security: [{ bearerAuth: [] }], responses: { '200': { description: Partially watched movies and episodes }, '403': { description: Denied } } }
+  /api/v1/playback/continue-watching/items/{logicalType}/{logicalId}:
+    delete: { operationId: dismissContinueWatching, summary: Hides an item until that user plays it again without changing watched state, security: [{ bearerAuth: [] }], parameters: [{ $ref: '#/components/parameters/LogicalType' }, { $ref: '#/components/parameters/LogicalId' }], responses: { '204': { description: Item dismissed }, '403': { description: Denied } } }
+  /api/v1/account/playback-preferences:
+    get: { operationId: getPlaybackPreferences, summary: Current user's semantic audio subtitle autoplay and quality defaults, security: [{ bearerAuth: [] }], responses: { '200': { description: Playback preferences }, '403': { description: Denied } } }
+    patch: { operationId: updatePlaybackPreferences, summary: Replaces validated preferences for the authenticated user only, security: [{ bearerAuth: [] }], responses: { '200': { description: Updated playback preferences }, '400': { $ref: '#/components/responses/BadRequest' } } }
+  /api/v1/playback/{logicalType}/{logicalId}/markers:
+    get: { operationId: listMediaMarkers, summary: Returns logical-timeline skip markers without paths, security: [{ bearerAuth: [] }], parameters: [{ $ref: '#/components/parameters/LogicalType' }, { $ref: '#/components/parameters/LogicalId' }], responses: { '200': { description: Manual marker ranges }, '403': { description: Denied } } }
+  /api/v1/playback/{logicalType}/{logicalId}/start-over:
+    post: { operationId: resetPlaybackProgress, summary: Resets resume position without conflating dismissal or watched state, security: [{ bearerAuth: [] }], parameters: [{ $ref: '#/components/parameters/LogicalType' }, { $ref: '#/components/parameters/LogicalId' }], responses: { '204': { description: Resume progress reset }, '403': { description: Denied } } }
+  /api/v1/admin/media-markers:
+    post: { operationId: createMediaMarker, summary: OWNER or ADMIN creates a validated manual logical-timeline marker and audit event, security: [{ bearerAuth: [] }], responses: { '201': { description: Marker created }, '400': { $ref: '#/components/responses/BadRequest' }, '403': { description: Denied } } }
+  /api/v1/admin/media-markers/{markerId}:
+    patch: { operationId: updateMediaMarker, summary: OWNER or ADMIN updates a manual marker and audits the change, security: [{ bearerAuth: [] }], parameters: [{ name: markerId, in: path, required: true, schema: { type: string } }], responses: { '200': { description: Marker updated }, '403': { description: Denied } } }
+    delete: { operationId: deleteMediaMarker, summary: OWNER or ADMIN deletes a marker and audits the change, security: [{ bearerAuth: [] }], parameters: [{ name: markerId, in: path, required: true, schema: { type: string } }], responses: { '204': { description: Marker deleted }, '403': { description: Denied } } }
   /api/v1/playback/{logicalType}/{logicalId}/progress:
     get: { operationId: getPlaybackProgress, summary: Current user's private logical-media progress, security: [{ bearerAuth: [] }], parameters: [{ $ref: '#/components/parameters/LogicalType' }, { $ref: '#/components/parameters/LogicalId' }], responses: { '200': { description: Progress or empty initial state }, '403': { description: Denied } } }
   /api/v1/playback/{logicalType}/{logicalId}/watched:

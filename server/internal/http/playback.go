@@ -30,6 +30,93 @@ func (h *Handler) playbackRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/playback/sessions/{sessionId}/subtitles/{trackId}", h.playbackSubtitle)
 	mux.HandleFunc("GET /api/v1/playback/continue-watching", h.require(auth.CapPlaybackSelfManage, h.continueWatching))
 	mux.HandleFunc("GET /api/v1/admin/playback/capabilities", h.require(auth.CapPlaybackSessionsView, h.playbackCapabilities))
+	mux.HandleFunc("GET /api/v1/account/playback-preferences", h.require(auth.CapPlaybackSelfManage, h.getPlaybackPreferences))
+	mux.HandleFunc("PATCH /api/v1/account/playback-preferences", h.require(auth.CapPlaybackSelfManage, h.setPlaybackPreferences))
+	mux.HandleFunc("GET /api/v1/playback/{logicalType}/{logicalId}/markers", h.require(auth.CapPlaybackStart, h.playbackMarkers))
+	mux.HandleFunc("POST /api/v1/admin/media-markers", h.require(auth.CapMetadataManage, h.createMarker))
+	mux.HandleFunc("PATCH /api/v1/admin/media-markers/{markerId}", h.require(auth.CapMetadataManage, h.updateMarker))
+	mux.HandleFunc("DELETE /api/v1/admin/media-markers/{markerId}", h.require(auth.CapMetadataManage, h.deleteMarker))
+	mux.HandleFunc("DELETE /api/v1/playback/continue-watching/items/{logicalType}/{logicalId}", h.require(auth.CapPlaybackSelfManage, h.dismissContinueWatching))
+	mux.HandleFunc("POST /api/v1/playback/{logicalType}/{logicalId}/start-over", h.require(auth.CapPlaybackSelfManage, h.startOver))
+}
+
+func (h *Handler) getPlaybackPreferences(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+	v, e := h.playback.Preferences(r.Context(), p.UserID)
+	if e != nil {
+		h.playbackError(w, r, e)
+		return
+	}
+	writeJSON(w, 200, v)
+}
+func (h *Handler) setPlaybackPreferences(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+	var in playback.PlaybackPreferences
+	if !decode(w, r, &in) {
+		return
+	}
+	v, e := h.playback.SetPreferences(r.Context(), p.UserID, in)
+	if e != nil {
+		h.playbackError(w, r, e)
+		return
+	}
+	writeJSON(w, 200, v)
+}
+func (h *Handler) playbackMarkers(w http.ResponseWriter, r *http.Request, _ auth.Principal) {
+	v, e := h.playback.Markers(r.Context(), strings.ToUpper(r.PathValue("logicalType")), r.PathValue("logicalId"))
+	if e != nil {
+		h.playbackError(w, r, e)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"markers": v})
+}
+func (h *Handler) createMarker(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+	var in playback.Marker
+	if !decode(w, r, &in) {
+		return
+	}
+	v, e := h.playback.SaveMarker(r.Context(), in)
+	if e != nil {
+		h.playbackError(w, r, e)
+		return
+	}
+	_ = h.auth.Audit(r.Context(), "MEDIA_MARKER_CREATED", &p.UserID, "media_marker", v.ID, RequestID(r.Context()), map[string]any{"logicalType": v.LogicalType, "logicalId": v.LogicalID, "markerType": v.Type})
+	writeJSON(w, 201, v)
+}
+func (h *Handler) updateMarker(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+	var in playback.Marker
+	if !decode(w, r, &in) {
+		return
+	}
+	in.ID = r.PathValue("markerId")
+	v, e := h.playback.SaveMarker(r.Context(), in)
+	if e != nil {
+		h.playbackError(w, r, e)
+		return
+	}
+	_ = h.auth.Audit(r.Context(), "MEDIA_MARKER_UPDATED", &p.UserID, "media_marker", v.ID, RequestID(r.Context()), map[string]any{"markerType": v.Type})
+	writeJSON(w, 200, v)
+}
+func (h *Handler) deleteMarker(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+	markerID := r.PathValue("markerId")
+	if e := h.playback.DeleteMarker(r.Context(), markerID); e != nil {
+		h.playbackError(w, r, e)
+		return
+	}
+	_ = h.auth.Audit(r.Context(), "MEDIA_MARKER_DELETED", &p.UserID, "media_marker", markerID, RequestID(r.Context()), map[string]any{})
+	w.WriteHeader(204)
+}
+func (h *Handler) dismissContinueWatching(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+	if e := h.playback.DismissContinue(r.Context(), p.UserID, strings.ToUpper(r.PathValue("logicalType")), r.PathValue("logicalId")); e != nil {
+		h.playbackError(w, r, e)
+		return
+	}
+	w.WriteHeader(204)
+}
+func (h *Handler) startOver(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+	if e := h.playback.ResetProgress(r.Context(), p.UserID, strings.ToUpper(r.PathValue("logicalType")), r.PathValue("logicalId")); e != nil {
+		h.playbackError(w, r, e)
+		return
+	}
+	w.WriteHeader(204)
 }
 
 func (h *Handler) startPlayback(w http.ResponseWriter, r *http.Request, p auth.Principal) {

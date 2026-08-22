@@ -46,20 +46,21 @@ type Reason struct {
 	Value string `json:"value,omitempty"`
 }
 type Track struct {
-	ID          string `json:"id"`
-	Kind        string `json:"kind"`
-	Codec       string `json:"codec"`
-	Language    string `json:"language,omitempty"`
-	Title       string `json:"title,omitempty"`
-	Channels    int    `json:"channels,omitempty"`
-	Default     bool   `json:"default"`
-	Forced      bool   `json:"forced,omitempty"`
-	Commentary  bool   `json:"commentary,omitempty"`
-	Usable      bool   `json:"usable"`
-	Reason      string `json:"reason,omitempty"`
-	Source      string `json:"source,omitempty"`
-	StreamIndex int    `json:"-"`
-	Path        string `json:"-"`
+	ID              string `json:"id"`
+	Kind            string `json:"kind"`
+	Codec           string `json:"codec"`
+	Language        string `json:"language,omitempty"`
+	Title           string `json:"title,omitempty"`
+	Channels        int    `json:"channels,omitempty"`
+	Default         bool   `json:"default"`
+	Forced          bool   `json:"forced,omitempty"`
+	Commentary      bool   `json:"commentary,omitempty"`
+	HearingImpaired bool   `json:"hearingImpaired,omitempty"`
+	Usable          bool   `json:"usable"`
+	Reason          string `json:"reason,omitempty"`
+	Source          string `json:"source,omitempty"`
+	StreamIndex     int    `json:"-"`
+	Path            string `json:"-"`
 }
 type Version struct {
 	ID             string   `json:"id"`
@@ -141,26 +142,33 @@ type Decision struct {
 	Reasons        []Reason     `json:"reasons"`
 }
 type Session struct {
-	ID              string           `json:"id"`
-	UserID          string           `json:"-"`
-	LogicalType     string           `json:"logicalType"`
-	LogicalID       string           `json:"logicalId"`
-	MediaVersion    Version          `json:"selectedVersion"`
-	Decision        Decision         `json:"decision"`
-	State           State            `json:"state"`
-	Position        float64          `json:"position"`
-	Duration        float64          `json:"duration"`
-	ResumePosition  float64          `json:"resumePosition"`
-	MediaURL        string           `json:"mediaUrl,omitempty"`
-	HLSURL          string           `json:"hlsUrl,omitempty"`
-	Qualities       []QualityProfile `json:"availableQualities,omitempty"`
-	SubtitleURL     string           `json:"subtitleUrl,omitempty"`
-	StartedAt       string           `json:"startedAt"`
-	LastActivityAt  string           `json:"lastActivityAt"`
-	Title           string           `json:"title,omitempty"`
-	UserDisplayName string           `json:"userDisplayName,omitempty"`
-	ClientName      string           `json:"clientName,omitempty"`
-	Platform        string           `json:"platform,omitempty"`
+	ID               string           `json:"id"`
+	UserID           string           `json:"-"`
+	LogicalType      string           `json:"logicalType"`
+	LogicalID        string           `json:"logicalId"`
+	MediaVersion     Version          `json:"selectedVersion"`
+	Decision         Decision         `json:"decision"`
+	State            State            `json:"state"`
+	Position         float64          `json:"position"`
+	Duration         float64          `json:"duration"`
+	ResumePosition   float64          `json:"resumePosition"`
+	MediaURL         string           `json:"mediaUrl,omitempty"`
+	HLSURL           string           `json:"hlsUrl,omitempty"`
+	Qualities        []QualityProfile `json:"availableQualities,omitempty"`
+	SubtitleURL      string           `json:"subtitleUrl,omitempty"`
+	StartedAt        string           `json:"startedAt"`
+	LastActivityAt   string           `json:"lastActivityAt"`
+	Title            string           `json:"title,omitempty"`
+	UserDisplayName  string           `json:"userDisplayName,omitempty"`
+	ClientName       string           `json:"clientName,omitempty"`
+	Platform         string           `json:"platform,omitempty"`
+	SelectedAudio    Track            `json:"selectedAudioTrack,omitempty"`
+	SelectedSubtitle *Track           `json:"selectedSubtitleTrack,omitempty"`
+	Markers          []Marker         `json:"markers,omitempty"`
+	Navigation       Navigation       `json:"navigation,omitempty"`
+	ContextID        string           `json:"playbackContextId,omitempty"`
+	Network          NetworkContext   `json:"networkContext,omitempty"`
+	EffectiveLimit   int64            `json:"effectiveBandwidthLimit,omitempty"`
 }
 type StartRequest struct {
 	LogicalType             string            `json:"logicalType"`
@@ -174,6 +182,46 @@ type StartRequest struct {
 	StartPosition           float64           `json:"startPosition,omitempty"`
 	Network                 NetworkContext    `json:"networkContext,omitempty"`
 	BandwidthLimit          int64             `json:"bandwidthLimit,omitempty"`
+	ContextID               string            `json:"playbackContextId,omitempty"`
+	ContextType             string            `json:"contextType,omitempty"`
+}
+
+type PlaybackPreferences struct {
+	AudioLanguages        []string `json:"preferredAudioLanguages"`
+	SubtitleLanguages     []string `json:"preferredSubtitleLanguages"`
+	SubtitleMode          string   `json:"subtitleMode"`
+	AutoplayNext          bool     `json:"autoplayNextEpisode"`
+	LocalQualityID        string   `json:"localQualityId"`
+	RemoteQualityID       string   `json:"remoteQualityId"`
+	AvoidCommentary       bool     `json:"avoidCommentary"`
+	PreferHearingImpaired bool     `json:"preferHearingImpaired"`
+}
+type Marker struct {
+	ID          string   `json:"id"`
+	LogicalType string   `json:"logicalType"`
+	LogicalID   string   `json:"logicalId"`
+	Type        string   `json:"type"`
+	Source      string   `json:"source"`
+	CreatedAt   string   `json:"createdAt"`
+	UpdatedAt   string   `json:"updatedAt"`
+	Start       float64  `json:"start"`
+	End         float64  `json:"end"`
+	Confidence  *float64 `json:"confidence,omitempty"`
+}
+type NavigationItem struct {
+	LogicalID     string `json:"logicalId"`
+	ShowID        string `json:"showId"`
+	ShowTitle     string `json:"showTitle"`
+	Title         string `json:"title"`
+	SeasonNumber  int    `json:"seasonNumber"`
+	EpisodeNumber int    `json:"episodeNumber"`
+	Available     bool   `json:"available"`
+}
+type Navigation struct {
+	Previous         *NavigationItem `json:"previous,omitempty"`
+	Next             *NavigationItem `json:"next,omitempty"`
+	Autoplay         bool            `json:"autoplay"`
+	CountdownSeconds int             `json:"countdownSeconds"`
 }
 type Progress struct {
 	State    State   `json:"state"`

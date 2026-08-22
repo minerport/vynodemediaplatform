@@ -15,6 +15,7 @@ import {
   type MediaFile,
   type Movie,
   type PlaybackSession,
+  type PlaybackPreferences,
   type PlaybackVersion,
   type ScanJob,
   type Session,
@@ -24,6 +25,7 @@ import {
   type User,
 } from "./api";
 type Page = string;
+let activePlaybackContext = "";
 const requested = () => {
   const path = location.pathname.slice(1);
   return path === "settings" ? "account" : path || "home";
@@ -239,7 +241,7 @@ function Home({ info, user }: { info: SystemInfo | null; user: User }) {
         <h2>{info?.serverName}</h2>
         <p>Welcome back, {user.displayName}.</p>
       </div>
-      {continuing.length > 0 && <><h2>Continue Watching</h2><div className="continue-grid">{continuing.map(x=><button key={`${x.logicalType}-${x.logicalId}`} className="continue-card" onClick={()=>location.assign(`/watch/${x.logicalType.toLowerCase()}/${x.logicalId}`)}><strong>{x.title}</strong><span>{formatTime(x.position)} of {formatTime(x.duration)}</span><progress value={x.progress} max={1}/></button>)}</div></>}
+      {continuing.length > 0 && <><h2>Continue Watching</h2><div className="continue-grid">{continuing.map(x=><div key={`${x.logicalType}-${x.logicalId}`} className="continue-card"><strong>{x.title}</strong><span>{formatTime(x.position)} of {formatTime(x.duration)} · {formatTime(x.duration-x.position)} remaining</span><progress value={x.progress} max={1}/><button onClick={()=>location.assign(`/watch/${x.logicalType.toLowerCase()}/${x.logicalId}`)}>Resume</button><button onClick={()=>api.dismissContinue(x.logicalType,x.logicalId).then(()=>setContinuing(items=>items.filter(i=>i!==x)))}>Remove</button></div>)}</div></>}
       {!movies.length && !shows.length && (
         <div className="empty">
           <div className="empty-icon">V</div>
@@ -425,7 +427,9 @@ function Form({
 }
 function Account({ user, info }: { user: User; info: SystemInfo | null }) {
   const [msg, setMsg] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [preferences,setPreferences]=useState<PlaybackPreferences|null>(null);
+  useEffect(()=>{api.playbackPreferences().then(setPreferences)},[]);
   async function change(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (busy) return;
@@ -497,6 +501,18 @@ function Account({ user, info }: { user: User; info: SystemInfo | null }) {
         </button>
         {msg && <p role="status">{msg}</p>}
       </form>
+      {preferences&&<form onSubmit={e=>{e.preventDefault();setBusy(true);api.setPlaybackPreferences(preferences).then(p=>{setPreferences(p);setMsg("Playback preferences saved.")}).catch(x=>setMsg(x.message)).finally(()=>setBusy(false))}}>
+        <h2>Playback</h2>
+        <label>Preferred audio languages<input aria-label="Preferred audio languages" value={preferences.preferredAudioLanguages.join(", ")} onChange={e=>setPreferences({...preferences,preferredAudioLanguages:e.target.value.split(",").map(x=>x.trim()).filter(Boolean)})}/><small>Ordered language codes, for example: en, ja, es</small></label>
+        <label>Preferred subtitle languages<input aria-label="Preferred subtitle languages" value={preferences.preferredSubtitleLanguages.join(", ")} onChange={e=>setPreferences({...preferences,preferredSubtitleLanguages:e.target.value.split(",").map(x=>x.trim()).filter(Boolean)})}/></label>
+        <label>Subtitles<select aria-label="Subtitle mode" value={preferences.subtitleMode} onChange={e=>setPreferences({...preferences,subtitleMode:e.target.value as PlaybackPreferences["subtitleMode"]})}><option value="OFF">Off</option><option value="ALWAYS">Always</option><option value="WHEN_AUDIO_NOT_PREFERRED">When audio is not preferred</option><option value="FORCED_ONLY">Forced only</option></select></label>
+        <label><input type="checkbox" checked={preferences.avoidCommentary} onChange={e=>setPreferences({...preferences,avoidCommentary:e.target.checked})}/> Avoid commentary unless explicitly selected</label>
+        <label><input type="checkbox" checked={preferences.preferHearingImpaired} onChange={e=>setPreferences({...preferences,preferHearingImpaired:e.target.checked})}/> Prefer hearing-impaired subtitles</label>
+        <label><input type="checkbox" checked={preferences.autoplayNextEpisode} onChange={e=>setPreferences({...preferences,autoplayNextEpisode:e.target.checked})}/> Autoplay next episode</label>
+        <label>Home streaming quality<select value={preferences.localQualityId} onChange={e=>setPreferences({...preferences,localQualityId:e.target.value})}><option value="auto">Auto</option><option value="original">Original</option><option value="1080p">Up to 1080p</option><option value="720p">Up to 720p</option><option value="480p">Up to 480p</option></select></label>
+        <label>Remote streaming quality<select value={preferences.remoteQualityId} onChange={e=>setPreferences({...preferences,remoteQualityId:e.target.value})}><option value="auto">Auto</option><option value="original">Original</option><option value="1080p">Up to 1080p</option><option value="720p">Up to 720p</option><option value="480p">Up to 480p</option></select></label>
+        <button disabled={busy}>Save playback preferences</button>
+      </form>}
     </section>
   );
 }
@@ -960,6 +976,8 @@ function Player({
     [quality, setQuality] = useState(""),
     [position, setPosition] = useState(0),
     [playing, setPlaying] = useState(false),
+    [diagnostics,setDiagnostics]=useState(false),
+    [upNext,setUpNext]=useState<{seconds:number;canceled:boolean}|null>(null),
     [message, setMessage] = useState("Preparing direct play…");
   const report = (state: string) => {
     const v = video.current,
@@ -1079,9 +1097,13 @@ function Player({
 	  currentVideo.load();
     }
     setMessage("Preparing direct play…");
-    const s = await api.startPlayback(type, id, version, resume, audio, subtitle, nextQuality, startPosition);
+    const s = await api.startPlayback(type, id, version, resume, audio, subtitle, nextQuality, startPosition, activePlaybackContext);
+    activePlaybackContext=s.playbackContextId||activePlaybackContext;
     sessionRef.current = s;
     setSession(s);
+    setAudio(s.selectedAudioTrack?.id||"");
+    setSubtitle(s.selectedSubtitleTrack?.id||"");
+    setUpNext(null);
     if (s.decision.mode === "UNSUPPORTED") {
       setMessage(reasonMessage(s.decision.reasons));
       return;
@@ -1099,9 +1121,12 @@ function Player({
     }
     if(!session.mediaUrl)return;
     if (session.decision.mode==="DIRECT_PLAY") {
-      if (session.resumePosition>0) v.currentTime=session.resumePosition;
+      v.load();
+      v.currentTime=session.resumePosition;
+      if(resumeAfterStart.current)v.play().catch(error=>setMessage(error.message));
     } else attachGeneratedStream(session,session.resumePosition).catch(e=>setMessage(e.message));
   }, [session]);
+  useEffect(()=>{if(!upNext||upNext.canceled||!session?.navigation?.autoplay||!session.navigation.next)return;const timer=setTimeout(()=>{if(upNext.seconds<=1){go(`watch/episode/${session.navigation!.next!.logicalId}`)}else setUpNext({...upNext,seconds:upNext.seconds-1})},1000);return()=>clearTimeout(timer)},[upNext,session]);
   useEffect(() => {
     api.playbackVersions(type, id).then((x) => setVersions(x.versions));
     start("", true).catch((e) => setMessage(e.message));
@@ -1139,10 +1164,12 @@ function Player({
       sessionRef.current = null;
     };
   }, [type, id]);
+  const activeMarker=session?.markers?.find(m=>position>=m.start&&position<m.end&&(m.type==="INTRO"||m.type==="RECAP"||m.type==="CREDITS"));
+  const explanation=session?reasonMessage(session.decision.reasons):"";
   return (
     <main className="player-shell">
       <div className="player-top">
-        <button onClick={() => go(type === "MOVIE" ? `movies/${id}` : "shows")}>
+        <button onClick={async () => {if(sessionRef.current)await api.stopPlayback(sessionRef.current.id).catch(()=>{});activePlaybackContext="";go(type === "MOVIE" ? `movies/${id}` : "shows")}}>
           ← Back
         </button>
         <strong>VyNode · {session?.decision.mode.replaceAll("_", " ") || "Playback"}</strong>
@@ -1160,7 +1187,6 @@ function Player({
           }}
           onTimeUpdate={() => {
             setPosition(video.current?.currentTime || 0);
-            report("PLAYING");
           }}
           onWaiting={() => setMessage("Buffering…")}
           onPause={() => {
@@ -1178,9 +1204,10 @@ function Player({
             internalSeek.current = false;
             report(video.current?.paused ? "PAUSED" : "PLAYING");
           }}
-          onEnded={() => {
+          onEnded={async () => {
             setMessage("Completed");
-            report("COMPLETED");
+            const s=sessionRef.current;if(s)await api.updatePlayback(s.id,"COMPLETED",video.current?.duration||s.duration,video.current?.duration||s.duration).catch(()=>{});
+            if(s?.navigation?.next)setUpNext({seconds:s.navigation.countdownSeconds||10,canceled:false});
           }}
           onError={() => {
             setMessage("Playback error");
@@ -1220,27 +1247,36 @@ function Player({
         <button onClick={()=>{const v=video.current;if(v){if(v.paused)v.play().catch(e=>setMessage(e.message));else v.pause()}}}>{playing?"Pause":"Play"}</button>
         <button onClick={()=>seekTo(position-10)}>−10s</button>
         <button onClick={()=>seekTo(position+10)}>+10s</button>
+        {activeMarker&&<button className="skip-control" onClick={()=>seekTo(activeMarker.end)}>Skip {activeMarker.type==="INTRO"?"Intro":activeMarker.type==="RECAP"?"Recap":"Credits"}</button>}
         <label>Playback position<input aria-label="Playback position" type="range" min="0" max={Math.max(1,session?.duration||1)} step="0.1" value={Math.min(position,session?.duration||position)} onChange={e=>seekTo(Number(e.target.value))} /></label>
         <label>Audio<select value={audio} onChange={e=>setAudio(e.target.value)}><option value="">Default</option>{(versions.find(v=>v.id===choice)||session?.selectedVersion)?.audioTracks?.map(t=><option key={t.id} value={t.id}>{t.language||"Unknown"} · {t.codec.toUpperCase()} {t.channels?`· ${t.channels}ch`:""}{t.commentary?" · Commentary":""}</option>)}</select></label>
         <label>Subtitles<select value={subtitle} onChange={e=>setSubtitle(e.target.value)}><option value="">Off</option>{(versions.find(v=>v.id===choice)||session?.selectedVersion)?.subtitleTracks?.filter(t=>t.usable).map(t=><option key={t.id} value={t.id}>{t.language||t.title||"Subtitle"} · {t.codec.toUpperCase()}</option>)}</select></label>
         {session && session.resumePosition > 0 && (
-          <button onClick={() => start(choice, false)}>Start Over</button>
+          <button onClick={() => api.startOver(type,id).then(()=>start(choice,false))}>Start Over</button>
         )}
+        <button aria-expanded={diagnostics} onClick={()=>setDiagnostics(!diagnostics)}>Playback info</button>
       </div>
+      {upNext&&session?.navigation?.next&&<aside className="up-next" aria-live="polite"><strong>Up Next: S{String(session.navigation.next.seasonNumber).padStart(2,"0")}E{String(session.navigation.next.episodeNumber).padStart(2,"0")} · {session.navigation.next.title}</strong>{session.navigation.autoplay&&!upNext.canceled&&<span>Playing in {upNext.seconds}s</span>}<button onClick={()=>go(`watch/episode/${session.navigation!.next!.logicalId}`)}>Play Now</button>{session.navigation.autoplay&&!upNext.canceled&&<button onClick={()=>setUpNext({...upNext,canceled:true})}>Cancel</button>}</aside>}
+      {diagnostics&&session&&<aside className="playback-diagnostics"><h2>Playback information</h2><dl><div><dt>Mode</dt><dd>{session.decision.mode.replaceAll("_"," ")}</dd></div><div><dt>Why</dt><dd>{explanation}</dd></div><div><dt>Quality</dt><dd>{session.decision.plan.quality||"Original"}{session.decision.plan.video.targetBitrate?` · ${(session.decision.plan.video.targetBitrate/1_000_000).toFixed(1)} Mbps`:""}</dd></div><div><dt>Video</dt><dd>{session.selectedVersion.videoCodec.toUpperCase()} {session.selectedVersion.width}×{session.selectedVersion.height}{session.decision.plan.video.targetCodec?` → ${session.decision.plan.video.targetCodec.toUpperCase()} ${session.decision.plan.video.targetWidth}×${session.decision.plan.video.targetHeight}`:""}</dd></div><div><dt>Audio</dt><dd>{session.selectedAudioTrack?.language||"Unknown"} · {session.decision.plan.audio.action}{session.decision.plan.audio.targetCodec?` → ${session.decision.plan.audio.targetCodec.toUpperCase()}`:""}</dd></div><div><dt>Subtitles</dt><dd>{session.selectedSubtitleTrack?`${session.selectedSubtitleTrack.language||"Unknown"}${session.selectedSubtitleTrack.forced?" · Forced":""}`:"Off"}</dd></div><div><dt>Network</dt><dd>{session.networkContext||"Unknown"}{session.effectiveBandwidthLimit?` · ${(session.effectiveBandwidthLimit/1_000_000).toFixed(1)} Mbps limit`:""}</dd></div><div><dt>Backend</dt><dd>{session.decision.plan.backend?.actual||"Not transcoding"}</dd></div></dl><button onClick={()=>start(choice,true,quality,position).catch(e=>setMessage(e.message))}>Retry stream</button></aside>}
     </main>
   );
 }
 function reasonMessage(reasons: { code: string; value?: string }[]) {
   const first = reasons[0];
   if (!first)
-    return "No available version can be played directly in this browser.";
+    return "The original streams are compatible with this browser.";
   if (first.code === "MEDIA_UNAVAILABLE")
     return "The media source is currently unavailable.";
   if (first.code === "VIDEO_CODEC_UNSUPPORTED")
     return `This version uses ${first.value}, which this browser did not report as supported.`;
   if (first.code === "CONTAINER_UNSUPPORTED")
     return `This browser did not report support for the ${first.value} container.`;
-  return "No available version can be played directly in this browser. Transcoding is coming in a later phase.";
+  if(first.code==="SOURCE_CONTAINER_UNSUPPORTED")return `The video is being repackaged because this browser does not support the ${first.value} container.`;
+  if(first.code==="AUDIO_CODEC_UNSUPPORTED")return `Audio is being converted because this browser does not support ${first.value?.toUpperCase()}.`;
+  if(first.code==="BITRATE_LIMIT_EXCEEDED")return "Video is being transcoded to obey the effective streaming bitrate limit.";
+  if(first.code==="RESOLUTION_LIMIT_EXCEEDED")return "Video is being transcoded to fit the selected resolution limit.";
+  if(first.code==="TRANSCODE_CAPACITY_REACHED")return "The server is currently at its video transcode limit. Try again shortly.";
+  return first.code.replaceAll("_"," ").toLowerCase();
 }
 function directlyPlayable(v: PlaybackVersion) {
   const c = browserCapabilities();
@@ -1497,6 +1533,7 @@ function MovieDetail({ id, go }: { id: string; go: (p: Page) => void }) {
         </div>
       ))}
       <ArtworkManager kind="movies" id={id} />
+      <MarkerManager type="MOVIE" id={id}/>
     </section>
   );
 }
@@ -1571,6 +1608,7 @@ function ShowDetail({ id, go }: { id: string; go: (p: Page) => void }) {
                 </p>
               </div>
               {e.available && <EpisodePlay id={e.id} go={go} />}
+              {e.available && <MarkerManager type="EPISODE" id={e.id}/>}
             </div>
           ))}
         </section>
@@ -1579,6 +1617,14 @@ function ShowDetail({ id, go }: { id: string; go: (p: Page) => void }) {
     </section>
   );
 }
+function MarkerManager({type,id}:{type:"MOVIE"|"EPISODE";id:string}){
+  const [admin,setAdmin]=useState(false),[markers,setMarkers]=useState<import("./api").MediaMarker[]>([]),[message,setMessage]=useState("");
+  const load=()=>api.markers(type,id).then(x=>setMarkers(x.markers ?? []));
+  useEffect(()=>{api.me().then(u=>{if(u.role!=="USER"){setAdmin(true);load()}})},[type,id]);
+  if(!admin)return null;
+  return <details className="marker-manager"><summary>Manual playback markers</summary>{markers.map(m=><div className="list-row" key={m.id}><span>{m.type} · {formatTime(m.start)}–{formatTime(m.end)} · {m.source}</span><span><button onClick={()=>{const start=prompt("Marker start in seconds",String(m.start)),end=prompt("Marker end in seconds",String(m.end));if(start!==null&&end!==null)api.updateMarker(m.id,{...m,start:Number(start),end:Number(end)}).then(load)}}>Edit</button> <button onClick={()=>api.deleteMarker(m.id).then(load)}>Delete</button></span></div>)}<form onSubmit={e=>{e.preventDefault();const form=e.currentTarget,d=new FormData(form);api.saveMarker({logicalType:type,logicalId:id,type:String(d.get("type")) as import("./api").MediaMarker["type"],start:Number(d.get("start")),end:Number(d.get("end"))}).then(()=>{form.reset();setMessage("Marker saved.");load()}).catch(x=>setMessage(x.message))}}><label>Marker type<select name="type"><option value="INTRO">Intro</option><option value="RECAP">Recap</option><option value="CREDITS">Credits</option><option value="POST_CREDITS">Post-credits</option></select></label><label>Start time (seconds)<input name="start" type="number" min="0" step="0.1" required/></label><label>End time (seconds)<input name="end" type="number" min="0.1" step="0.1" required/></label><button>Add manual marker</button>{message&&<span role="status">{message}</span>}</form></details>
+}
+
 function ArtworkManager({
   kind,
   id,
@@ -1589,7 +1635,7 @@ function ArtworkManager({
   const [admin, setAdmin] = useState(false),
     [items, setItems] = useState<import("./api").Artwork[]>([]),
     [message, setMessage] = useState("");
-  const load = () => api.artwork(kind, id).then((x) => setItems(x.artwork));
+  const load = () => api.artwork(kind, id).then((x) => setItems(x.artwork ?? []));
   useEffect(() => {
     api.me().then((u) => {
       if (u.role !== "USER") {
