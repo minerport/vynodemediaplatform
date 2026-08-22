@@ -2,6 +2,8 @@
 
 Playback experience state is server authoritative: user preferences select semantic tracks, playback contexts model episode continuity, and media markers use logical seconds rather than file offsets or HLS segments.
 
+Playback intelligence is a persisted local background-work layer: compact fingerprints and marker candidates, controlled optimized derivatives, and allowlisted automation rules. Playback remains the highest resource priority.
+
 Phase 6 distinguishes playback sessions, persisted transcode sessions, FFmpeg processes, and server-owned HLS artifacts. A central manager admits a conservative number of software video transcodes while Direct Play remains slot-free.
 
 Playback planning is separate from HTTP delivery. `FFmpegPipeline` owns capability detection, allowlisted arguments, capacity, cancellation, and bounded diagnostics. One logical playback session can own multiple pipeline instances without duplicating progress.

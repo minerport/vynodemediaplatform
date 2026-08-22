@@ -18,7 +18,7 @@ func TestMigrationStartup(t *testing.T) {
 	if err := store.Migrate(context.Background()); err != nil {
 		t.Fatalf("migrations must be idempotent: %v", err)
 	}
-	for _, table := range []string{"server_settings", "users", "devices", "sessions", "audit_events", "movies", "shows", "seasons", "episodes", "media_associations", "external_ids", "genres", "artwork", "metadata_jobs", "client_capabilities", "playback_sessions", "user_media_progress", "playback_history", "playback_pipeline_instances", "sidecar_subtitles", "transcode_sessions", "transcode_backend_status", "user_quality_preferences", "user_playback_preferences", "playback_contexts", "media_markers", "continue_watching_dismissals"} {
+	for _, table := range []string{"server_settings", "users", "devices", "sessions", "audit_events", "movies", "shows", "seasons", "episodes", "media_associations", "external_ids", "genres", "artwork", "metadata_jobs", "client_capabilities", "playback_sessions", "user_media_progress", "playback_history", "playback_pipeline_instances", "sidecar_subtitles", "transcode_sessions", "transcode_backend_status", "user_quality_preferences", "user_playback_preferences", "playback_contexts", "media_markers", "continue_watching_dismissals", "marker_suppressions", "media_fingerprints", "background_jobs", "optimized_media", "automation_rules", "automation_executions"} {
 		var name string
 		if err := store.DB.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&name); err != nil {
 			t.Fatalf("missing table %s: %v", table, err)

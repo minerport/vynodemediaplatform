@@ -93,6 +93,7 @@ export function App() {
       page === "audit" ||
       page === "libraries" ||
       page === "metadata" ||
+      page === "automation" ||
       page === "streams") &&
     !admin
   ) {
@@ -128,6 +129,8 @@ export function App() {
     <ShowDetail id={page.split("/")[1]} go={go} />
   ) : page === "metadata" ? (
     <MetadataAdmin />
+  ) : page === "automation" ? (
+    <AutomationAdmin />
   ) : (
     <Home info={info} user={user} />
   );
@@ -158,6 +161,9 @@ export function App() {
               </Nav>
               <Nav go={go} page={page} target="streams">
                 Active Streams
+              </Nav>
+              <Nav go={go} page={page} target="automation">
+                Automation
               </Nav>
             </>
           )}
@@ -1534,6 +1540,7 @@ function MovieDetail({ id, go }: { id: string; go: (p: Page) => void }) {
       ))}
       <ArtworkManager kind="movies" id={id} />
       <MarkerManager type="MOVIE" id={id}/>
+      <OptimizationManager type="MOVIE" id={id} versions={item.versions??[]}/>
     </section>
   );
 }
@@ -1614,6 +1621,7 @@ function ShowDetail({ id, go }: { id: string; go: (p: Page) => void }) {
         </section>
       ))}
       <ArtworkManager kind="shows" id={id} />
+      <AnalysisManager targetType="SHOW" targetId={id}/>
     </section>
   );
 }
@@ -1623,6 +1631,22 @@ function MarkerManager({type,id}:{type:"MOVIE"|"EPISODE";id:string}){
   useEffect(()=>{api.me().then(u=>{if(u.role!=="USER"){setAdmin(true);load()}})},[type,id]);
   if(!admin)return null;
   return <details className="marker-manager"><summary>Manual playback markers</summary>{markers.map(m=><div className="list-row" key={m.id}><span>{m.type} · {formatTime(m.start)}–{formatTime(m.end)} · {m.source}</span><span><button onClick={()=>{const start=prompt("Marker start in seconds",String(m.start)),end=prompt("Marker end in seconds",String(m.end));if(start!==null&&end!==null)api.updateMarker(m.id,{...m,start:Number(start),end:Number(end)}).then(load)}}>Edit</button> <button onClick={()=>api.deleteMarker(m.id).then(load)}>Delete</button></span></div>)}<form onSubmit={e=>{e.preventDefault();const form=e.currentTarget,d=new FormData(form);api.saveMarker({logicalType:type,logicalId:id,type:String(d.get("type")) as import("./api").MediaMarker["type"],start:Number(d.get("start")),end:Number(d.get("end"))}).then(()=>{form.reset();setMessage("Marker saved.");load()}).catch(x=>setMessage(x.message))}}><label>Marker type<select name="type"><option value="INTRO">Intro</option><option value="RECAP">Recap</option><option value="CREDITS">Credits</option><option value="POST_CREDITS">Post-credits</option></select></label><label>Start time (seconds)<input name="start" type="number" min="0" step="0.1" required/></label><label>End time (seconds)<input name="end" type="number" min="0.1" step="0.1" required/></label><button>Add manual marker</button>{message&&<span role="status">{message}</span>}</form></details>
+}
+
+function AnalysisManager({targetType,targetId}:{targetType:string;targetId:string}){const [admin,setAdmin]=useState(false),[message,setMessage]=useState("");useEffect(()=>{api.me().then(x=>setAdmin(x.role!=="USER"))},[]);if(!admin)return null;return <section><h3>Automatic marker analysis</h3><button onClick={()=>api.analyzeMarkers(targetType,targetId).then(j=>setMessage(`Analysis ${j.State.toLowerCase()}.`)).catch(x=>setMessage(x.message))}>Reanalyze {targetType.toLowerCase()}</button>{message&&<span role="status">{message}</span>}</section>}
+function OptimizationManager({type,id,versions}:{type:"MOVIE"|"EPISODE";id:string;versions:import("./api").MediaVersion[]}){const [admin,setAdmin]=useState(false),[profile,setProfile]=useState("mobile-720p"),[message,setMessage]=useState("");useEffect(()=>{api.me().then(x=>setAdmin(x.role!=="USER"))},[]);if(!admin||!versions.length)return null;return <section><h3>Optimized versions</h3><p>Creates a derivative in VyNode-controlled storage. The original is never changed.</p><label>Profile<select value={profile} onChange={e=>setProfile(e.target.value)}><option value="mobile-480p">Mobile 480p</option><option value="mobile-720p">Mobile 720p</option><option value="remote-1080p">Remote 1080p</option><option value="compatible-h264">Compatible H.264</option></select></label><button onClick={()=>api.optimize({logicalType:type,logicalId:id,sourceMediaFileId:versions[0].fileId,profile}).then(j=>setMessage(`Optimization ${j.State.toLowerCase()}.`)).catch(x=>setMessage(x.message))}>Optimize</button>{message&&<span role="status">{message}</span>}</section>}
+
+function AutomationAdmin(){
+  const [rules,setRules]=useState<import("./api").AutomationRule[]>([]),[jobs,setJobs]=useState<import("./api").IntelligenceJob[]>([]),[optimized,setOptimized]=useState<import("./api").OptimizedMedia[]>([]),[candidates,setCandidates]=useState<import("./api").MarkerCandidate[]>([]),[auto,setAuto]=useState(false),[message,setMessage]=useState("");
+  const load=()=>Promise.all([api.automationRules(),api.intelligenceJobs(),api.optimizedMedia(),api.markerReview(),api.markerPolicy()]).then(([r,j,o,c,p])=>{setRules(r.rules??[]);setJobs(j.jobs??[]);setOptimized(o.items??[]);setCandidates(c.candidates??[]);setAuto(p.automaticallyActivateHighConfidence)});
+  useEffect(()=>{load()},[]);
+  return <section className="panel"><h2>Automation</h2><p>Local analysis and optimization run below active playback priority. Manual markers are always authoritative.</p><label><input type="checkbox" checked={auto} onChange={e=>api.setMarkerPolicy(e.target.checked).then(()=>{setAuto(e.target.checked);setMessage("Marker policy saved.")})}/> Automatically activate high-confidence markers</label>{message&&<p role="status">{message}</p>}
+    <h3>Marker review</h3>{!candidates.length&&<p>No candidates need review.</p>}{candidates.map(c=><div className="list-row" key={c.ID}><span><strong>{c.Type}</strong> · {c.LogicalType} {c.LogicalID}<br/>{formatTime(c.Start)}–{formatTime(c.End)} · {c.ConfidenceClass} ({Math.round(c.Confidence*100)}%) · {c.Source}</span><span><button onClick={()=>api.reviewAutomaticMarker(c.ID,"ACCEPT").then(load)}>Accept</button> <button onClick={()=>{const start=prompt("Start seconds",String(c.Start)),end=prompt("End seconds",String(c.End));if(start&&end)api.reviewAutomaticMarker(c.ID,"ADJUST",Number(start),Number(end)).then(load)}}>Adjust</button> <button onClick={()=>api.reviewAutomaticMarker(c.ID,"REJECT").then(load)}>Reject</button></span></div>)}
+    <h3>Rules</h3>{rules.map(r=><div className="list-row" key={r.ID}><span><strong>{r.Name}</strong> · {r.Trigger} · {r.Enabled?"Enabled":"Disabled"}<br/>{r.LastExecutionAt?`Last run ${r.LastExecutionAt}`:"Never run"}</span><span><button onClick={()=>api.dryRunAutomation(r).then(x=>setMessage(`Dry run: ${x.matches.length} matches, ${x.actionsExecuted} actions executed.`))}>Dry Run</button> <button onClick={()=>r.ID&&api.executeAutomation(r.ID).then(x=>{setMessage(`Executed: ${x.matches.length} matches, ${x.actionsExecuted} actions.`);load()})}>Run Now</button> <button onClick={()=>api.saveAutomationRule({...r,Enabled:!r.Enabled}).then(load)}>{r.Enabled?"Disable":"Enable"}</button> <button onClick={()=>r.ID&&api.deleteAutomationRule(r.ID).then(load)}>Delete</button></span></div>)}
+    <form onSubmit={e=>{e.preventDefault();const form=e.currentTarget,d=new FormData(form);const codec=String(d.get("codec")),profile=String(d.get("profile")),trigger=String(d.get("trigger"));api.saveAutomationRule({Name:String(d.get("name")),Enabled:true,Trigger:trigger,Timezone:"UTC",Schedule:trigger==="SCHEDULE"?{Hour:Number(d.get("hour")),Minute:Number(d.get("minute"))}:undefined,Conditions:codec?[{Field:"codec",Operator:"EQUALS",Value:codec}]:[],Actions:[{Type:String(d.get("action")),Profile:profile||undefined}]}).then(()=>{form.reset();load()}).catch(x=>setMessage(x.message))}}><h3>Create structured rule</h3><label>Name<input name="name" required/></label><label>Trigger<select name="trigger"><option>MEDIA_IDENTIFIED</option><option>MEDIA_ADDED</option><option>METADATA_REFRESHED</option><option>SCAN_COMPLETED</option><option>SCHEDULE</option></select></label><label>Schedule hour (UTC)<input name="hour" type="number" min="0" max="23" defaultValue="0"/></label><label>Schedule minute<input name="minute" type="number" min="0" max="59" defaultValue="0"/></label><label>Video codec condition<input name="codec" placeholder="hevc"/></label><label>Action<select name="action"><option>CREATE_OPTIMIZED_VERSION</option><option>RUN_MARKER_ANALYSIS</option></select></label><label>Optimization profile<select name="profile"><option value="mobile-720p">Mobile 720p</option><option value="mobile-480p">Mobile 480p</option><option value="remote-1080p">Remote 1080p</option><option value="compatible-h264">Compatible H.264</option></select></label><button>Create rule</button></form>
+    <h3>Background work</h3>{jobs.map(j=><div className="list-row" key={j.ID}><span>{j.Type} · {j.TargetType} {j.TargetID}<br/>{j.State} · {Math.round(j.Progress*100)}% {j.Error}</span></div>)}
+    <h3>Managed optimized versions</h3>{!optimized.length&&<p>No optimized versions.</p>}{optimized.map(o=><div className="list-row" key={o.ID}><span>{o.LogicalType} {o.LogicalID} · {o.Profile}<br/>{o.Status} · {(o.SizeBytes/1048576).toFixed(1)} MB</span><button onClick={()=>confirm("Delete this optimized copy? The original will remain untouched.")&&api.deleteOptimized(o.ID).then(load)}>Delete copy</button></div>)}
+  </section>
 }
 
 function ArtworkManager({

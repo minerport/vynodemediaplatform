@@ -9,6 +9,7 @@ import (
 	"github.com/vynode/media/server/internal/database"
 	httpserver "github.com/vynode/media/server/internal/http"
 	"github.com/vynode/media/server/internal/identity"
+	"github.com/vynode/media/server/internal/intelligence"
 	"github.com/vynode/media/server/internal/media"
 	"github.com/vynode/media/server/internal/metadata"
 	"github.com/vynode/media/server/internal/playback"
@@ -20,9 +21,10 @@ import (
 )
 
 type Runtime struct {
-	Server   *http.Server
-	store    *database.Store
-	playback *playback.Service
+	Server       *http.Server
+	store        *database.Store
+	playback     *playback.Service
+	intelligence *intelligence.Service
 }
 
 func Initialize(ctx context.Context, cfg config.Config, logger *slog.Logger) (*Runtime, error) {
@@ -56,12 +58,18 @@ func Initialize(ctx context.Context, cfg config.Config, logger *slog.Logger) (*R
 	pipeline := playback.NewFFmpeg(cfg.FFmpegPath, cfg.PlaybackPipelines)
 	playbackService := playback.New(store.DB, pipeline)
 	playbackService.ConfigureVideo(playback.NewHLS(cfg.FFmpegPath, cfg.TranscodeDir, cfg.VideoTranscodes), cfg.RemoteBitrate)
-	server := &http.Server{Addr: cfg.HTTPAddress, Handler: httpserver.NewHandler(logger, store, info, authService, mediaService, metadataService, playbackService, cfg.AllowedOrigin), ReadHeaderTimeout: cfg.ReadHeaderTimeout, IdleTimeout: cfg.IdleTimeout}
-	return &Runtime{Server: server, store: store, playback: playbackService}, nil
+	intelligenceService := intelligence.New(store.DB, cfg.FFmpegPath, cfg.OptimizedDir)
+	intelligenceService.StartScheduler()
+	metadataService.ConfigureAutomation(intelligenceService.HandleEvent)
+	server := &http.Server{Addr: cfg.HTTPAddress, Handler: httpserver.NewHandler(logger, store, info, authService, mediaService, metadataService, playbackService, cfg.AllowedOrigin, intelligenceService), ReadHeaderTimeout: cfg.ReadHeaderTimeout, IdleTimeout: cfg.IdleTimeout}
+	return &Runtime{Server: server, store: store, playback: playbackService, intelligence: intelligenceService}, nil
 }
 func (r *Runtime) Shutdown(ctx context.Context) error {
 	if r.playback != nil {
 		r.playback.Close()
+	}
+	if r.intelligence != nil {
+		r.intelligence.Close()
 	}
 	serverErr := r.Server.Shutdown(ctx)
 	dbErr := r.store.Close()

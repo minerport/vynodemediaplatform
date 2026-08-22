@@ -204,7 +204,7 @@ func (s *Service) Markers(ctx context.Context, logicalType, logicalID string) ([
 	if available == 0 {
 		return nil, ErrNotFound
 	}
-	rows, err := s.db.QueryContext(ctx, "SELECT id,logical_type,logical_id,marker_type,start_seconds,end_seconds,source,confidence,created_at,updated_at FROM media_markers WHERE logical_type=? AND logical_id=? ORDER BY start_seconds,marker_type", logicalType, logicalID)
+	rows, err := s.db.QueryContext(ctx, "SELECT id,logical_type,logical_id,marker_type,start_seconds,end_seconds,source,confidence,created_at,updated_at FROM media_markers WHERE logical_type=? AND logical_id=? AND active=1 AND review_state='ACCEPTED' ORDER BY start_seconds,marker_type", logicalType, logicalID)
 	if err != nil {
 		return nil, err
 	}
@@ -253,7 +253,10 @@ func (s *Service) SaveMarker(ctx context.Context, marker Marker) (Marker, error)
 	}
 	marker.UpdatedAt = now
 	marker.Source = "MANUAL"
-	_, err := s.db.ExecContext(ctx, `INSERT INTO media_markers(id,logical_type,logical_id,marker_type,start_seconds,end_seconds,source,confidence,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET marker_type=excluded.marker_type,start_seconds=excluded.start_seconds,end_seconds=excluded.end_seconds,updated_at=excluded.updated_at`, marker.ID, marker.LogicalType, marker.LogicalID, marker.Type, marker.Start, marker.End, marker.Source, marker.Confidence, marker.CreatedAt, marker.UpdatedAt)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO media_markers(id,logical_type,logical_id,marker_type,start_seconds,end_seconds,source,confidence,active,review_state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,NULL,1,'ACCEPTED',?,?) ON CONFLICT(id) DO UPDATE SET marker_type=excluded.marker_type,start_seconds=excluded.start_seconds,end_seconds=excluded.end_seconds,source='MANUAL',confidence=NULL,active=1,review_state='ACCEPTED',source_identity=NULL,updated_at=excluded.updated_at`, marker.ID, marker.LogicalType, marker.LogicalID, marker.Type, marker.Start, marker.End, marker.Source, marker.CreatedAt, marker.UpdatedAt)
+	if err == nil {
+		_, _ = s.db.ExecContext(ctx, "UPDATE media_markers SET active=0,review_state='SUPERSEDED',updated_at=? WHERE logical_type=? AND logical_id=? AND marker_type=? AND source!='MANUAL'", now, marker.LogicalType, marker.LogicalID, marker.Type)
+	}
 	return marker, err
 }
 func (s *Service) DeleteMarker(ctx context.Context, id string) error {

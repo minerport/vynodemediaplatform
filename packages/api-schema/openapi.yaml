@@ -154,6 +154,39 @@ paths:
     get: { operationId: getPlaybackCapabilities, summary: Safe FFmpeg capabilities and pipeline counts, security: [{ bearerAuth: [] }], responses: { '200': { description: FFmpeg version and relevant capabilities }, '403': { description: Denied } } }
   /api/v1/admin/playback/sessions/{sessionId}:
     delete: { operationId: terminatePlaybackSession, summary: Requires playback.sessions.manage and emits a security audit event, security: [{ bearerAuth: [] }], parameters: [{ $ref: '#/components/parameters/PlaybackSessionId' }], responses: { '204': { description: Session terminated }, '404': { $ref: '#/components/responses/NotFound' } } }
+  /api/v1/admin/background-jobs:
+    get: { operationId: listBackgroundJobs, summary: Unified marker-analysis and optimization job history, security: [{ bearerAuth: [] }], responses: { '200': { description: Background work ordered newest first }, '403': { description: Denied } } }
+  /api/v1/admin/background-jobs/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    delete: { operationId: cancelBackgroundJob, summary: Cancels queued or running controlled work, security: [{ bearerAuth: [] }], responses: { '204': { description: Cancellation requested }, '404': { $ref: '#/components/responses/NotFound' } } }
+  /api/v1/admin/marker-analysis:
+    post: { operationId: startMarkerAnalysis, summary: Queues local-only bounded fingerprint and credits analysis, security: [{ bearerAuth: [] }], responses: { '202': { description: Deduplicated background job }, '400': { $ref: '#/components/responses/BadRequest' } } }
+  /api/v1/admin/marker-review:
+    get: { operationId: listMarkerReviewCandidates, summary: Medium-confidence and conflicting automatic candidates, security: [{ bearerAuth: [] }], responses: { '200': { description: Review queue }, '403': { description: Denied } } }
+  /api/v1/admin/marker-review/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post: { operationId: reviewAutomaticMarker, summary: Accept adjust or reject with durable suppression and manual precedence, security: [{ bearerAuth: [] }], responses: { '204': { description: Review persisted }, '409': { description: Manual marker remains authoritative } } }
+  /api/v1/admin/marker-policy:
+    get: { operationId: getAutomaticMarkerPolicy, security: [{ bearerAuth: [] }], responses: { '200': { description: Explicit activation policy }, '403': { description: Denied } } }
+    put: { operationId: setAutomaticMarkerPolicy, security: [{ bearerAuth: [] }], responses: { '204': { description: Policy saved and audited }, '403': { description: Denied } } }
+  /api/v1/admin/optimizations:
+    get: { operationId: listOptimizedVersions, summary: Lists VyNode-managed derivatives without filesystem paths, security: [{ bearerAuth: [] }], responses: { '200': { description: Managed optimized versions }, '403': { description: Denied } } }
+    post: { operationId: createOptimizedVersion, summary: Queues an atomic derivative under controlled storage without modifying the original, security: [{ bearerAuth: [] }], responses: { '202': { description: Optimization job }, '400': { $ref: '#/components/responses/BadRequest' } } }
+  /api/v1/admin/optimizations/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    delete: { operationId: deleteOptimizedVersion, summary: Removes only the managed derivative and its catalog records; original media is untouched, security: [{ bearerAuth: [] }], responses: { '204': { description: Derivative removed }, '404': { $ref: '#/components/responses/NotFound' } } }
+  /api/v1/admin/automation-rules:
+    get: { operationId: listAutomationRules, security: [{ bearerAuth: [] }], responses: { '200': { description: Structured allowlisted rules }, '403': { description: Denied } } }
+    post: { operationId: createAutomationRule, security: [{ bearerAuth: [] }], responses: { '200': { description: Rule saved and audited }, '400': { $ref: '#/components/responses/BadRequest' } } }
+  /api/v1/admin/automation-rules/dry-run:
+    post: { operationId: dryRunAutomationRule, summary: Reports matches with zero actions, security: [{ bearerAuth: [] }], responses: { '200': { description: Matching logical targets and zero side effects }, '400': { $ref: '#/components/responses/BadRequest' } } }
+  /api/v1/admin/automation-rules/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    put: { operationId: updateAutomationRule, security: [{ bearerAuth: [] }], responses: { '200': { description: Rule updated and audited }, '400': { $ref: '#/components/responses/BadRequest' } } }
+    delete: { operationId: deleteAutomationRule, security: [{ bearerAuth: [] }], responses: { '204': { description: Rule deleted and audited }, '404': { $ref: '#/components/responses/NotFound' } } }
+  /api/v1/admin/automation-rules/{id}/execute:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post: { operationId: executeAutomationRule, summary: Idempotent bounded execution with recursion depth guard, security: [{ bearerAuth: [] }], responses: { '200': { description: Execution result }, '403': { description: Denied } } }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }

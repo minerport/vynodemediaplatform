@@ -408,8 +408,8 @@ func (s *Service) Update(ctx context.Context, userID, sessionID string, p Progre
 	}
 	var creditsStart sql.NullFloat64
 	var postCredits int
-	_ = s.db.QueryRowContext(ctx, "SELECT MIN(start_seconds) FROM media_markers WHERE logical_type=? AND logical_id=? AND marker_type='CREDITS'", logicalType, logicalID).Scan(&creditsStart)
-	_ = s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_markers WHERE logical_type=? AND logical_id=? AND marker_type='POST_CREDITS'", logicalType, logicalID).Scan(&postCredits)
+	_ = s.db.QueryRowContext(ctx, "SELECT MIN(start_seconds) FROM media_markers WHERE logical_type=? AND logical_id=? AND marker_type='CREDITS' AND active=1 AND review_state='ACCEPTED'", logicalType, logicalID).Scan(&creditsStart)
+	_ = s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_markers WHERE logical_type=? AND logical_id=? AND marker_type='POST_CREDITS' AND active=1 AND review_state='ACCEPTED'", logicalType, logicalID).Scan(&postCredits)
 	watched := p.State == Completed || (creditsStart.Valid && postCredits == 0 && p.Position >= creditsStart.Float64) || (!creditsStart.Valid && p.Duration > 0 && p.Position/p.Duration >= .9)
 	if watched {
 		p.State = Completed
