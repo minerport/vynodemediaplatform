@@ -31,7 +31,7 @@ COPY --from=build --chown=65532:65532 /runtime/config /config
 COPY --from=build --chown=65532:65532 /runtime/media /media
 COPY --from=build --chown=65532:65532 /runtime/transcode /transcode
 ENV VYNODE_HTTP_ADDRESS=0.0.0.0:8096 VYNODE_CONFIG_DIR=/config VYNODE_DATABASE_TYPE=sqlite VYNODE_WEB_DIR=/web
-ENV VYNODE_FFPROBE_PATH=/usr/bin/ffprobe VYNODE_TRANSCODE_DIR=/transcode VYNODE_PROBE_CONCURRENCY=2
+ENV VYNODE_FFPROBE_PATH=/usr/bin/ffprobe VYNODE_FFMPEG_PATH=/usr/bin/ffmpeg VYNODE_TRANSCODE_DIR=/transcode VYNODE_PROBE_CONCURRENCY=2 VYNODE_PLAYBACK_PIPELINES=2
 VOLUME ["/config", "/media", "/transcode"]
 EXPOSE 8096
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD ["/vynode-server", "healthcheck"]

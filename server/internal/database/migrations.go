@@ -79,6 +79,23 @@ CREATE INDEX idx_playback_active ON playback_sessions(state,last_activity_at);
 CREATE INDEX idx_playback_user ON playback_sessions(user_id,started_at DESC);
 CREATE INDEX idx_progress_user_recent ON user_media_progress(user_id,watched,last_played_at DESC);
 CREATE INDEX idx_capabilities_session ON client_capabilities(auth_session_id,updated_at DESC);
+`}, {7, "playback_pipeline", `
+CREATE TABLE playback_history_phase4 AS SELECT * FROM playback_history;
+DROP TABLE playback_history;
+ALTER TABLE playback_sessions RENAME TO playback_sessions_phase4;
+CREATE TABLE playback_sessions (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,auth_session_id TEXT NOT NULL,capability_id TEXT NOT NULL,logical_type TEXT NOT NULL CHECK(logical_type IN ('MOVIE','EPISODE')),logical_id TEXT NOT NULL,media_association_id TEXT,media_file_id TEXT,mode TEXT NOT NULL CHECK(mode IN ('DIRECT_PLAY','DIRECT_STREAM','AUDIO_TRANSCODE','UNSUPPORTED')),state TEXT NOT NULL CHECK(state IN ('STARTING','PLAYING','PAUSED','STOPPED','COMPLETED','ERROR')),position_seconds REAL NOT NULL DEFAULT 0,duration_seconds REAL NOT NULL DEFAULT 0,started_at TEXT NOT NULL,last_activity_at TEXT NOT NULL,ended_at TEXT,completion_reason TEXT,error_code TEXT,media_token_hash TEXT,media_token_expires_at TEXT,bytes_served INTEGER NOT NULL DEFAULT 0,selected_audio_track_id TEXT,selected_subtitle_track_id TEXT,pipeline_plan_json TEXT NOT NULL DEFAULT '{}',FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,FOREIGN KEY(auth_session_id) REFERENCES sessions(id) ON DELETE CASCADE,FOREIGN KEY(capability_id) REFERENCES client_capabilities(id),FOREIGN KEY(media_association_id) REFERENCES media_associations(id) ON DELETE SET NULL,FOREIGN KEY(media_file_id) REFERENCES media_files(id) ON DELETE SET NULL);
+INSERT INTO playback_sessions(id,user_id,auth_session_id,capability_id,logical_type,logical_id,media_association_id,media_file_id,mode,state,position_seconds,duration_seconds,started_at,last_activity_at,ended_at,completion_reason,error_code,media_token_hash,media_token_expires_at,bytes_served) SELECT id,user_id,auth_session_id,capability_id,logical_type,logical_id,media_association_id,media_file_id,mode,state,position_seconds,duration_seconds,started_at,last_activity_at,ended_at,completion_reason,error_code,media_token_hash,media_token_expires_at,bytes_served FROM playback_sessions_phase4;
+DROP TABLE playback_sessions_phase4;
+CREATE TABLE playback_history (id INTEGER PRIMARY KEY AUTOINCREMENT,playback_session_id TEXT NOT NULL,user_id TEXT NOT NULL,event_type TEXT NOT NULL,position_seconds REAL NOT NULL DEFAULT 0,created_at TEXT NOT NULL,FOREIGN KEY(playback_session_id) REFERENCES playback_sessions(id) ON DELETE CASCADE,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
+INSERT INTO playback_history SELECT * FROM playback_history_phase4;
+DROP TABLE playback_history_phase4;
+ALTER TABLE client_capabilities ADD COLUMN max_audio_channels INTEGER NOT NULL DEFAULT 2;
+ALTER TABLE client_capabilities ADD COLUMN fragmented_mp4 INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE playback_pipeline_instances (id TEXT PRIMARY KEY,playback_session_id TEXT NOT NULL,state TEXT NOT NULL CHECK(state IN ('STARTING','RUNNING','STOPPING','STOPPED','FAILED')),mode TEXT NOT NULL CHECK(mode IN ('DIRECT_STREAM','AUDIO_TRANSCODE')),start_seconds REAL NOT NULL DEFAULT 0,started_at TEXT NOT NULL,running_at TEXT,ended_at TEXT,startup_ms INTEGER,error_code TEXT,safe_diagnostic TEXT,FOREIGN KEY(playback_session_id) REFERENCES playback_sessions(id) ON DELETE CASCADE);
+CREATE TABLE sidecar_subtitles (id TEXT PRIMARY KEY,media_file_id TEXT NOT NULL,relative_path TEXT NOT NULL,format TEXT NOT NULL,language TEXT,availability TEXT NOT NULL DEFAULT 'AVAILABLE',size_bytes INTEGER NOT NULL,modified_at_ns INTEGER NOT NULL,UNIQUE(media_file_id,relative_path),FOREIGN KEY(media_file_id) REFERENCES media_files(id) ON DELETE CASCADE);
+CREATE INDEX idx_playback_active ON playback_sessions(state,last_activity_at);
+CREATE INDEX idx_playback_user ON playback_sessions(user_id,started_at DESC);
+CREATE INDEX idx_pipeline_session ON playback_pipeline_instances(playback_session_id,started_at DESC);
 `}}
 
 func (s *Store) Migrate(ctx context.Context) error {

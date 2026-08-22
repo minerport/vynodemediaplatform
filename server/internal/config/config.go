@@ -26,6 +26,8 @@ type Config struct {
 	WebDir            string
 	FFprobePath       string
 	ProbeConcurrency  int
+	FFmpegPath        string
+	PlaybackPipelines int
 }
 
 func Load() (Config, error) {
@@ -43,6 +45,8 @@ func Load() (Config, error) {
 		WebDir:            envOr("VYNODE_WEB_DIR", ""),
 		FFprobePath:       envOr("VYNODE_FFPROBE_PATH", ""),
 		ProbeConcurrency:  2,
+		FFmpegPath:        envOr("VYNODE_FFMPEG_PATH", ""),
+		PlaybackPipelines: 2,
 	}
 	if strings.TrimSpace(cfg.ConfigDir) == "" {
 		return Config{}, fmt.Errorf("VYNODE_CONFIG_DIR must not be empty")
@@ -84,6 +88,13 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("VYNODE_PROBE_CONCURRENCY must be between 1 and 8")
 		}
 		cfg.ProbeConcurrency = value
+	}
+	if raw := os.Getenv("VYNODE_PLAYBACK_PIPELINES"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > 16 {
+			return Config{}, fmt.Errorf("VYNODE_PLAYBACK_PIPELINES must be between 1 and 16")
+		}
+		cfg.PlaybackPipelines = value
 	}
 	return cfg, nil
 }

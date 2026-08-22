@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,10 +30,15 @@ type Service struct {
 	db         *sql.DB
 	now        func() time.Time
 	inactivity time.Duration
+	pipeline   *FFmpegPipeline
 }
 
-func New(db *sql.DB) *Service {
-	s := &Service{db: db, now: time.Now, inactivity: 45 * time.Minute}
+func New(db *sql.DB, pipeline ...*FFmpegPipeline) *Service {
+	var p *FFmpegPipeline
+	if len(pipeline) > 0 {
+		p = pipeline[0]
+	}
+	s := &Service{db: db, now: time.Now, inactivity: 45 * time.Minute, pipeline: p}
 	s.AbandonStale(context.Background())
 	return s
 }
@@ -51,7 +57,7 @@ func (s *Service) Start(ctx context.Context, userID, authSessionID string, in St
 	if in.LogicalType != "MOVIE" && in.LogicalType != "EPISODE" {
 		return Session{}, ErrValidation
 	}
-	if in.LogicalID == "" || in.Capabilities.SchemaVersion != 1 || in.Capabilities.ClientName == "" || len(in.Capabilities.Containers) > 20 || len(in.Capabilities.VideoCodecs) > 20 || len(in.Capabilities.AudioCodecs) > 30 {
+	if in.LogicalID == "" || (in.Capabilities.SchemaVersion != 1 && in.Capabilities.SchemaVersion != 2) || in.Capabilities.ClientName == "" || len(in.Capabilities.Containers) > 20 || len(in.Capabilities.VideoCodecs) > 20 || len(in.Capabilities.AudioCodecs) > 30 || in.Capabilities.MaxAudioChannels < 0 || in.Capabilities.MaxAudioChannels > 16 {
 		return Session{}, ErrValidation
 	}
 	var active int
@@ -62,7 +68,13 @@ func (s *Service) Start(ctx context.Context, userID, authSessionID string, in St
 	if err != nil {
 		return Session{}, err
 	}
-	selected, decision := Select(versions, in.Capabilities, in.RequestedVersionID)
+	selected, decision := SelectTracks(versions, in.Capabilities, in.RequestedVersionID, in.SelectedAudioTrackID, in.SelectedSubtitleTrackID)
+	if decision.Mode != DirectPlay && decision.Mode != Unsupported && (s.pipeline == nil || !s.pipeline.Available()) {
+		decision = reject(decision, "FFMPEG_UNAVAILABLE", "")
+	}
+	if decision.Mode == AudioTranscode && !contains(s.pipeline.Capabilities().Encoders, "aac") {
+		decision = reject(decision, "AUDIO_ENCODER_UNAVAILABLE", "aac")
+	}
 	now := s.now().UTC()
 	capID := id()
 	tokenRaw := make([]byte, 32)
@@ -79,7 +91,7 @@ func (s *Service) Start(ctx context.Context, userID, authSessionID string, in St
 		return Session{}, err
 	}
 	defer tx.Rollback()
-	_, err = tx.ExecContext(ctx, `INSERT INTO client_capabilities(id,user_id,auth_session_id,schema_version,client_name,client_version,platform,platform_version,device_model,containers_json,video_codecs_json,audio_codecs_json,subtitle_formats_json,max_width,max_height,hdr_json,direct_play,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, capID, userID, authSessionID, in.Capabilities.SchemaVersion, in.Capabilities.ClientName, in.Capabilities.ClientVersion, in.Capabilities.Platform, in.Capabilities.PlatformVersion, in.Capabilities.DeviceModel, listJSON(in.Capabilities.Containers), listJSON(in.Capabilities.VideoCodecs), listJSON(in.Capabilities.AudioCodecs), listJSON(in.Capabilities.SubtitleFormats), in.Capabilities.MaxWidth, in.Capabilities.MaxHeight, listJSON(in.Capabilities.HDR), in.Capabilities.DirectPlay, stamp(now), stamp(now))
+	_, err = tx.ExecContext(ctx, `INSERT INTO client_capabilities(id,user_id,auth_session_id,schema_version,client_name,client_version,platform,platform_version,device_model,containers_json,video_codecs_json,audio_codecs_json,subtitle_formats_json,max_width,max_height,hdr_json,direct_play,max_audio_channels,fragmented_mp4,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, capID, userID, authSessionID, in.Capabilities.SchemaVersion, in.Capabilities.ClientName, in.Capabilities.ClientVersion, in.Capabilities.Platform, in.Capabilities.PlatformVersion, in.Capabilities.DeviceModel, listJSON(in.Capabilities.Containers), listJSON(in.Capabilities.VideoCodecs), listJSON(in.Capabilities.AudioCodecs), listJSON(in.Capabilities.SubtitleFormats), in.Capabilities.MaxWidth, in.Capabilities.MaxHeight, listJSON(in.Capabilities.HDR), in.Capabilities.DirectPlay, in.Capabilities.MaxAudioChannels, in.Capabilities.FragmentedMP4, stamp(now), stamp(now))
 	if err != nil {
 		return Session{}, err
 	}
@@ -95,7 +107,8 @@ func (s *Service) Start(ctx context.Context, userID, authSessionID string, in St
 	if decision.Mode == Unsupported {
 		state = Error
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO playback_sessions(id,user_id,auth_session_id,capability_id,logical_type,logical_id,media_association_id,media_file_id,mode,state,position_seconds,duration_seconds,started_at,last_activity_at,ended_at,error_code,media_token_hash,media_token_expires_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, sessionID, userID, authSessionID, capID, in.LogicalType, in.LogicalID, null(selected.ID), null(selected.FileID), decision.Mode, state, resume, duration, stamp(now), stamp(now), func() any {
+	planJSON, _ := json.Marshal(decision.Plan)
+	_, err = tx.ExecContext(ctx, `INSERT INTO playback_sessions(id,user_id,auth_session_id,capability_id,logical_type,logical_id,media_association_id,media_file_id,mode,state,position_seconds,duration_seconds,started_at,last_activity_at,ended_at,error_code,media_token_hash,media_token_expires_at,selected_audio_track_id,selected_subtitle_track_id,pipeline_plan_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, sessionID, userID, authSessionID, capID, in.LogicalType, in.LogicalID, null(selected.ID), null(selected.FileID), decision.Mode, state, resume, duration, stamp(now), stamp(now), func() any {
 		if state == Error {
 			return stamp(now)
 		}
@@ -105,7 +118,7 @@ func (s *Service) Start(ctx context.Context, userID, authSessionID string, in St
 			return decision.Reasons[0].Code
 		}
 		return nil
-	}(), hex.EncodeToString(sum[:]), stamp(now.Add(time.Hour)))
+	}(), hex.EncodeToString(sum[:]), stamp(now.Add(4*time.Hour)), null(decision.Plan.Audio.TrackID), null(in.SelectedSubtitleTrackID), string(planJSON))
 	if err != nil {
 		return Session{}, err
 	}
@@ -116,8 +129,11 @@ func (s *Service) Start(ctx context.Context, userID, authSessionID string, in St
 		return Session{}, err
 	}
 	out := Session{ID: sessionID, UserID: userID, LogicalType: in.LogicalType, LogicalID: in.LogicalID, MediaVersion: selected, Decision: decision, State: state, Position: resume, Duration: duration, ResumePosition: resume, StartedAt: stamp(now), LastActivityAt: stamp(now)}
-	if decision.Mode == DirectPlay {
+	if decision.Mode != Unsupported {
 		out.MediaURL = "/api/v1/playback/sessions/" + sessionID + "/media?token=" + token
+	}
+	if in.SelectedSubtitleTrackID != "" && decision.Mode != Unsupported {
+		out.SubtitleURL = "/api/v1/playback/sessions/" + sessionID + "/subtitles/" + in.SelectedSubtitleTrackID
 	}
 	return out, nil
 }
@@ -150,23 +166,106 @@ func (s *Service) Versions(ctx context.Context, kind, logicalID string) ([]Versi
 	}
 	rows.Close()
 	for i := range out {
-		arows, e := s.db.QueryContext(ctx, "SELECT DISTINCT COALESCE(codec,'') FROM media_streams WHERE media_file_id=? AND UPPER(stream_type)='AUDIO' ORDER BY is_default DESC,stream_index", out[i].FileID)
+		arows, e := s.db.QueryContext(ctx, "SELECT id,stream_index,COALESCE(codec,''),COALESCE(language,''),COALESCE(title,''),COALESCE(channels,0),is_default,commentary FROM media_streams WHERE media_file_id=? AND UPPER(stream_type)='AUDIO' ORDER BY is_default DESC,stream_index", out[i].FileID)
 		if e != nil {
 			return nil, e
 		}
 		for arows.Next() {
-			var a string
-			_ = arows.Scan(&a)
-			if a != "" {
-				out[i].AudioCodecs = append(out[i].AudioCodecs, a)
+			var a Track
+			if e = arows.Scan(&a.ID, &a.StreamIndex, &a.Codec, &a.Language, &a.Title, &a.Channels, &a.Default, &a.Commentary); e != nil {
+				arows.Close()
+				return nil, e
+			}
+			a.Kind = "AUDIO"
+			a.Usable = true
+			out[i].AudioTracks = append(out[i].AudioTracks, a)
+			if a.Codec != "" && !contains(out[i].AudioCodecs, a.Codec) {
+				out[i].AudioCodecs = append(out[i].AudioCodecs, a.Codec)
 			}
 		}
 		arows.Close()
+		srows, e := s.db.QueryContext(ctx, "SELECT id,stream_index,COALESCE(codec,''),COALESCE(language,''),COALESCE(title,''),is_default,is_forced FROM media_streams WHERE media_file_id=? AND UPPER(stream_type)='SUBTITLE' ORDER BY stream_index", out[i].FileID)
+		if e != nil {
+			return nil, e
+		}
+		for srows.Next() {
+			var t Track
+			if e = srows.Scan(&t.ID, &t.StreamIndex, &t.Codec, &t.Language, &t.Title, &t.Default, &t.Forced); e != nil {
+				srows.Close()
+				return nil, e
+			}
+			t.Kind = "SUBTITLE"
+			t.Source = "EMBEDDED"
+			t.Usable = textSubtitle(t.Codec)
+			if !t.Usable {
+				t.Reason = "SUBTITLE_REQUIRES_VIDEO_TRANSCODE"
+			}
+			out[i].SubtitleTracks = append(out[i].SubtitleTracks, t)
+		}
+		srows.Close()
+		if e = s.discoverSidecars(ctx, &out[i]); e != nil {
+			return nil, e
+		}
 	}
 	if len(out) == 0 {
 		return nil, ErrNotFound
 	}
 	return out, nil
+}
+func (s *Service) Close() {
+	if s.pipeline != nil {
+		s.pipeline.Close()
+	}
+}
+func textSubtitle(codec string) bool {
+	return contains([]string{"subrip", "srt", "webvtt", "ass", "ssa"}, codec)
+}
+
+func (s *Service) discoverSidecars(ctx context.Context, v *Version) error {
+	var root, rel, base string
+	if e := s.db.QueryRowContext(ctx, "SELECT src.normalized_path,f.relative_path,f.base_name FROM media_files f JOIN library_sources src ON src.id=f.source_id WHERE f.id=?", v.FileID).Scan(&root, &rel, &base); e != nil {
+		return e
+	}
+	dir := filepath.Dir(filepath.Join(root, filepath.FromSlash(rel)))
+	entries, e := os.ReadDir(dir)
+	if e != nil {
+		return nil
+	}
+	prefix := strings.ToLower(base)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(name)), ".")
+		if !contains([]string{"srt", "vtt", "ass", "ssa"}, ext) {
+			continue
+		}
+		stem := strings.TrimSuffix(name, filepath.Ext(name))
+		lower := strings.ToLower(stem)
+		if lower != prefix && !strings.HasPrefix(lower, prefix+".") {
+			continue
+		}
+		st, e := entry.Info()
+		if e != nil || st.Size() > maxSubtitleSize {
+			continue
+		}
+		lang := ""
+		if lower != prefix {
+			lang = strings.TrimPrefix(lower, prefix+".")
+		}
+		sid := "sidecar-" + v.FileID + "-" + fmt.Sprintf("%x", sha256.Sum256([]byte(name)))
+		sid = sid[:len("sidecar-")+len(v.FileID)+1+16]
+		relative, _ := filepath.Rel(root, filepath.Join(dir, name))
+		_, _ = s.db.ExecContext(ctx, `INSERT INTO sidecar_subtitles(id,media_file_id,relative_path,format,language,availability,size_bytes,modified_at_ns) VALUES(?,?,?,?,?,'AVAILABLE',?,?) ON CONFLICT(media_file_id,relative_path) DO UPDATE SET format=excluded.format,language=excluded.language,availability='AVAILABLE',size_bytes=excluded.size_bytes,modified_at_ns=excluded.modified_at_ns`, sid, v.FileID, filepath.ToSlash(relative), ext, lang, st.Size(), st.ModTime().UnixNano())
+		usable := ext == "srt" || ext == "vtt"
+		reason := ""
+		if !usable {
+			reason = "FORMAT_NOT_BROWSER_CONVERTIBLE"
+		}
+		v.SubtitleTracks = append(v.SubtitleTracks, Track{ID: sid, Kind: "SUBTITLE", Codec: ext, Language: lang, Usable: usable, Reason: reason, Source: "EXTERNAL", Path: filepath.Join(dir, name)})
+	}
+	return nil
 }
 func normalizeContainer(ext string) string {
 	ext = strings.ToLower(strings.TrimPrefix(ext, "."))
@@ -208,6 +307,9 @@ func (s *Service) Update(ctx context.Context, userID, sessionID string, p Progre
 	ended := any(nil)
 	if p.State == Stopped || p.State == Completed || p.State == Error {
 		ended = stamp(now)
+		if s.pipeline != nil {
+			s.pipeline.Cancel(sessionID)
+		}
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -263,6 +365,9 @@ type MediaAccess struct {
 	Path, MIME, ETag, Modified string
 	Size                       int64
 	SessionID                  string
+	Mode                       Mode
+	Plan                       PipelinePlan
+	AudioStreamIndex           int
 }
 
 func (s *Service) AuthorizeMedia(ctx context.Context, sessionID, token string) (MediaAccess, error) {
@@ -270,8 +375,8 @@ func (s *Service) AuthorizeMedia(ctx context.Context, sessionID, token string) (
 	var a MediaAccess
 	var root, rel string
 	var storedSize, storedMtime int64
-	var state, expiry string
-	err := s.db.QueryRowContext(ctx, `SELECT src.normalized_path,f.relative_path,f.size_bytes,f.modified_at_ns,p.state,p.media_token_expires_at,f.extension FROM playback_sessions p JOIN media_files f ON f.id=p.media_file_id JOIN library_sources src ON src.id=f.source_id JOIN sessions s ON s.id=p.auth_session_id JOIN users u ON u.id=p.user_id WHERE p.id=? AND p.mode='DIRECT_PLAY' AND p.media_token_hash=? AND f.availability='AVAILABLE' AND s.revoked_at IS NULL AND s.expires_at>? AND u.status='ACTIVE'`, sessionID, hex.EncodeToString(sum[:]), stamp(s.now())).Scan(&root, &rel, &storedSize, &storedMtime, &state, &expiry, &a.MIME)
+	var state, expiry, mode, planJSON string
+	err := s.db.QueryRowContext(ctx, `SELECT src.normalized_path,f.relative_path,f.size_bytes,f.modified_at_ns,p.state,p.media_token_expires_at,f.extension,p.mode,p.pipeline_plan_json,COALESCE(ms.stream_index,-1) FROM playback_sessions p JOIN media_files f ON f.id=p.media_file_id JOIN library_sources src ON src.id=f.source_id JOIN sessions s ON s.id=p.auth_session_id JOIN users u ON u.id=p.user_id LEFT JOIN media_streams ms ON ms.id=p.selected_audio_track_id WHERE p.id=? AND p.mode IN ('DIRECT_PLAY','DIRECT_STREAM','AUDIO_TRANSCODE') AND p.media_token_hash=? AND f.availability='AVAILABLE' AND s.revoked_at IS NULL AND s.expires_at>? AND u.status='ACTIVE'`, sessionID, hex.EncodeToString(sum[:]), stamp(s.now())).Scan(&root, &rel, &storedSize, &storedMtime, &state, &expiry, &a.MIME, &mode, &planJSON, &a.AudioStreamIndex)
 	if err != nil {
 		return a, ErrForbidden
 	}
@@ -302,8 +407,124 @@ func (s *Service) AuthorizeMedia(ctx context.Context, sessionID, token string) (
 	a.ETag = fmt.Sprintf(`"%x-%x"`, storedSize, storedMtime)
 	a.MIME = mediaType(a.MIME)
 	a.SessionID = sessionID
+	a.Mode = Mode(mode)
+	_ = json.Unmarshal([]byte(planJSON), &a.Plan)
 	_, _ = s.db.ExecContext(ctx, "UPDATE playback_sessions SET state=CASE WHEN state='STARTING' THEN 'PLAYING' ELSE state END,last_activity_at=? WHERE id=?", stamp(s.now()), sessionID)
 	return a, nil
+}
+
+func (s *Service) StreamGenerated(ctx context.Context, a MediaAccess, start float64, w io.Writer) error {
+	if a.Mode != DirectStream && a.Mode != AudioTranscode {
+		return ErrValidation
+	}
+	if start < 0 || start > 7*24*3600 {
+		return ErrValidation
+	}
+	if s.pipeline == nil {
+		return ErrPipelineUnavailable
+	}
+	instance := id()
+	now := s.now()
+	_, e := s.db.ExecContext(ctx, "INSERT INTO playback_pipeline_instances(id,playback_session_id,state,mode,start_seconds,started_at) VALUES(?,?,?,?,?,?)", instance, a.SessionID, PipelineStarting, a.Mode, start, stamp(now))
+	if e != nil {
+		return e
+	}
+	s.pipeline.Cancel(a.SessionID)
+	_, _ = s.db.ExecContext(ctx, "UPDATE playback_pipeline_instances SET state='STOPPING' WHERE playback_session_id=? AND state IN ('STARTING','RUNNING') AND id<>?", a.SessionID, instance)
+	_, _ = s.db.ExecContext(ctx, "UPDATE playback_pipeline_instances SET state='RUNNING',running_at=?,startup_ms=? WHERE id=?", stamp(s.now()), time.Since(now).Milliseconds(), instance)
+	streamCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go s.monitorAuthorization(streamCtx, cancel, a.SessionID)
+	res, e := s.pipeline.Stream(streamCtx, PipelineRequest{SessionID: a.SessionID, InstanceID: instance, SourcePath: a.Path, Mode: a.Mode, Start: start, AudioStreamIndex: a.AudioStreamIndex, TargetChannels: a.Plan.Audio.TargetChannels}, w)
+	state := PipelineStopped
+	if e != nil && res.Code != "PIPELINE_CANCELED" {
+		state = PipelineFailed
+	}
+	_, _ = s.db.Exec("UPDATE playback_pipeline_instances SET state=?,ended_at=?,error_code=?,safe_diagnostic=? WHERE id=?", state, stamp(s.now()), null(res.Code), truncate(res.Stderr, 32768), instance)
+	return e
+}
+func (s *Service) monitorAuthorization(ctx context.Context, cancel context.CancelFunc, sessionID string) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			var n int
+			e := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM playback_sessions p JOIN sessions a ON a.id=p.auth_session_id JOIN users u ON u.id=p.user_id WHERE p.id=? AND p.state IN ('STARTING','PLAYING','PAUSED') AND a.revoked_at IS NULL AND a.expires_at>? AND u.status='ACTIVE'`, sessionID, stamp(s.now())).Scan(&n)
+			if e != nil || n != 1 {
+				cancel()
+				return
+			}
+		}
+	}
+}
+func truncate(s string, n int) string {
+	if len(s) > n {
+		return s[:n]
+	}
+	return s
+}
+func (s *Service) Capabilities() FFmpegCapabilities {
+	if s.pipeline == nil {
+		return FFmpegCapabilities{Muxers: []string{}, Encoders: []string{}, Decoders: []string{}}
+	}
+	return s.pipeline.Capabilities()
+}
+func (s *Service) Subtitle(ctx context.Context, sessionID, token, trackID string) ([]byte, error) {
+	a, e := s.AuthorizeMedia(ctx, sessionID, token)
+	if e != nil {
+		return nil, e
+	}
+	var selected string
+	if e = s.db.QueryRowContext(ctx, "SELECT COALESCE(selected_subtitle_track_id,'') FROM playback_sessions WHERE id=?", sessionID).Scan(&selected); e != nil || selected != trackID {
+		return nil, ErrForbidden
+	}
+	if strings.HasPrefix(trackID, "sidecar-") {
+		var rel, format string
+		var size, mtime int64
+		if e = s.db.QueryRowContext(ctx, "SELECT relative_path,format,size_bytes,modified_at_ns FROM sidecar_subtitles WHERE id=? AND media_file_id=(SELECT media_file_id FROM playback_sessions WHERE id=?) AND availability='AVAILABLE'", trackID, sessionID).Scan(&rel, &format, &size, &mtime); e != nil {
+			return nil, ErrForbidden
+		}
+		var root string
+		_ = s.db.QueryRowContext(ctx, "SELECT normalized_path FROM library_sources WHERE id=(SELECT source_id FROM media_files WHERE id=(SELECT media_file_id FROM playback_sessions WHERE id=?))", sessionID).Scan(&root)
+		path := filepath.Clean(filepath.Join(root, filepath.FromSlash(rel)))
+		if !strings.HasPrefix(path, filepath.Clean(root)+string(os.PathSeparator)) {
+			return nil, ErrForbidden
+		}
+		st, e := os.Stat(path)
+		if e != nil || st.Size() != size || st.ModTime().UnixNano() != mtime {
+			return nil, ErrStale
+		}
+		return readSubtitle(path, format)
+	}
+	var index int
+	var codec string
+	if e = s.db.QueryRowContext(ctx, "SELECT stream_index,COALESCE(codec,'') FROM media_streams WHERE id=? AND media_file_id=(SELECT media_file_id FROM playback_sessions WHERE id=?)", trackID, sessionID).Scan(&index, &codec); e != nil || !textSubtitle(codec) {
+		return nil, ErrForbidden
+	}
+	if s.pipeline == nil {
+		return nil, ErrPipelineUnavailable
+	}
+	return s.pipeline.ConvertEmbeddedSubtitle(ctx, a.Path, index)
+}
+func (s *Service) ContinueWatching(ctx context.Context, userID string) ([]ContinueItem, error) {
+	rows, e := s.db.QueryContext(ctx, `SELECT p.logical_type,p.logical_id,CASE p.logical_type WHEN 'MOVIE' THEN COALESCE((SELECT title FROM movies WHERE id=p.logical_id),'Unknown movie') ELSE COALESCE((SELECT title FROM episodes WHERE id=p.logical_id),'Unknown episode') END,p.position_seconds,p.duration_seconds,p.last_played_at FROM user_media_progress p WHERE p.user_id=? AND p.watched=0 AND p.position_seconds>0 AND p.duration_seconds>0 ORDER BY p.last_played_at DESC LIMIT 30`, userID)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := []ContinueItem{}
+	for rows.Next() {
+		var x ContinueItem
+		if e = rows.Scan(&x.LogicalType, &x.LogicalID, &x.Title, &x.Position, &x.Duration, &x.LastPlayedAt); e != nil {
+			return nil, e
+		}
+		x.Progress = x.Position / x.Duration
+		out = append(out, x)
+	}
+	return out, rows.Err()
 }
 func mediaType(ext string) string {
 	switch normalizeContainer(ext) {
@@ -335,7 +556,7 @@ func (s *Service) AbandonStale(ctx context.Context) {
 	_, _ = s.db.ExecContext(ctx, "UPDATE playback_sessions SET state='STOPPED',completion_reason='SERVER_RESTART',ended_at=? WHERE state IN ('STARTING','PLAYING','PAUSED')", now)
 }
 func (s *Service) Active(ctx context.Context) ([]Session, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT p.id,p.logical_type,p.logical_id,p.state,p.position_seconds,p.duration_seconds,p.started_at,p.last_activity_at,u.display_name,c.client_name,c.platform,CASE p.logical_type WHEN 'MOVIE' THEN COALESCE((SELECT title FROM movies WHERE id=p.logical_id),'Unknown movie') ELSE COALESCE((SELECT e.title FROM episodes e WHERE e.id=p.logical_id),'Unknown episode') END,COALESCE(f.resolution_class,''),COALESCE((SELECT codec FROM media_streams WHERE media_file_id=f.id AND UPPER(stream_type)='VIDEO' ORDER BY stream_index LIMIT 1),'') FROM playback_sessions p JOIN users u ON u.id=p.user_id JOIN client_capabilities c ON c.id=p.capability_id LEFT JOIN media_files f ON f.id=p.media_file_id WHERE p.state IN ('STARTING','PLAYING','PAUSED') AND p.last_activity_at>? ORDER BY p.started_at`, stamp(s.now().Add(-s.inactivity)))
+	rows, err := s.db.QueryContext(ctx, `SELECT p.id,p.logical_type,p.logical_id,p.state,p.position_seconds,p.duration_seconds,p.started_at,p.last_activity_at,u.display_name,c.client_name,c.platform,CASE p.logical_type WHEN 'MOVIE' THEN COALESCE((SELECT title FROM movies WHERE id=p.logical_id),'Unknown movie') ELSE COALESCE((SELECT e.title FROM episodes e WHERE e.id=p.logical_id),'Unknown episode') END,COALESCE(f.resolution_class,''),COALESCE((SELECT codec FROM media_streams WHERE media_file_id=f.id AND UPPER(stream_type)='VIDEO' ORDER BY stream_index LIMIT 1),''),p.mode,p.pipeline_plan_json FROM playback_sessions p JOIN users u ON u.id=p.user_id JOIN client_capabilities c ON c.id=p.capability_id LEFT JOIN media_files f ON f.id=p.media_file_id WHERE p.state IN ('STARTING','PLAYING','PAUSED') AND p.last_activity_at>? ORDER BY p.started_at`, stamp(s.now().Add(-s.inactivity)))
 	if err != nil {
 		return nil, err
 	}
@@ -343,11 +564,12 @@ func (s *Service) Active(ctx context.Context) ([]Session, error) {
 	out := []Session{}
 	for rows.Next() {
 		var x Session
-		var res, codec string
-		if err = rows.Scan(&x.ID, &x.LogicalType, &x.LogicalID, &x.State, &x.Position, &x.Duration, &x.StartedAt, &x.LastActivityAt, &x.UserDisplayName, &x.ClientName, &x.Platform, &x.Title, &res, &codec); err != nil {
+		var res, codec, mode, plan string
+		if err = rows.Scan(&x.ID, &x.LogicalType, &x.LogicalID, &x.State, &x.Position, &x.Duration, &x.StartedAt, &x.LastActivityAt, &x.UserDisplayName, &x.ClientName, &x.Platform, &x.Title, &res, &codec, &mode, &plan); err != nil {
 			return nil, err
 		}
-		x.Decision.Mode = DirectPlay
+		x.Decision.Mode = Mode(mode)
+		_ = json.Unmarshal([]byte(plan), &x.Decision.Plan)
 		x.MediaVersion.Resolution = res
 		x.MediaVersion.VideoCodec = codec
 		out = append(out, x)
@@ -355,6 +577,9 @@ func (s *Service) Active(ctx context.Context) ([]Session, error) {
 	return out, rows.Err()
 }
 func (s *Service) AdminStop(ctx context.Context, id string) error {
+	if s.pipeline != nil {
+		s.pipeline.Cancel(id)
+	}
 	now := stamp(s.now())
 	r, err := s.db.ExecContext(ctx, "UPDATE playback_sessions SET state='STOPPED',completion_reason='ADMIN_TERMINATED',ended_at=?,last_activity_at=? WHERE id=? AND state IN ('STARTING','PLAYING','PAUSED')", now, now, id)
 	if err != nil {

@@ -1,11 +1,542 @@
-export type User={id:string;username:string;displayName:string;role:'OWNER'|'ADMIN'|'USER';status:string;createdAt:string};export type SystemInfo={version:string;instanceId:string;serverName:string;databaseType:string;operatingSystem:string;architecture:string;uptimeSeconds:number};export type Session={id:string;deviceName:string;clientName:string;platform:string;createdAt:string;lastActivityAt:string;current:boolean};export type AuditEvent={id:number;event:string;actorUserId:string;targetType:string;targetId:string;timestamp:string;metadata:Record<string,unknown>};let accessToken='';let refreshFlight:Promise<User>|null=null
-export type LibrarySource={id:string;configuredPath:string;normalizedPath:string;lastScanStatus?:string;lastSuccessfulScanAt?:string;lastScanError?:string};export type Library={id:string;name:string;type:'MOVIES'|'TV';enabled:boolean;sources?:LibrarySource[];fileCount:number;availableCount:number;missingCount:number;probeFailureCount:number};export type ScanJob={id:string;libraryId:string;state:string;filesDiscovered:number;candidatesFound:number;filesProbed:number;filesAdded:number;filesUpdated:number;filesUnchanged:number;filesMissing:number;filesFailed:number;currentRelativePath?:string};export type MediaStream={id:string;index:number;type:string;codec:string;profile:string;width?:number;height?:number;channels?:number;language?:string;title?:string;forced:boolean;default:boolean;colorTransfer?:string};export type MediaFile={id:string;sourceId:string;relativePath:string;fileName:string;sizeBytes:number;modifiedAtNs:number;availability:string;probeStatus:string;probeError?:string;containerFormat?:string;durationSeconds?:number;bitrate?:number;resolutionClass?:string;hdrClass?:string;candidateTitle?:string;candidateYear?:number;seasonNumber?:number;episodeStart?:number;episodeEnd?:number;streams?:MediaStream[]};
-export type MediaVersion={id:string;fileId:string;label:string;resolution:string;codec:string;hdr:string};export type Movie={id:string;title:string;year?:number;releaseDate?:string;runtimeMinutes?:number;overview:string;contentRating?:string;rating?:number;voteCount?:number;genres:string[];versions?:MediaVersion[]};export type Episode={id:string;episodeNumber:number;title:string;overview:string;airDate:string;runtimeMinutes:number;available:boolean};export type Season={id:string;seasonNumber:number;title:string;overview:string;airDate:string;episodes:Episode[]};export type Show={id:string;title:string;year?:number;firstAirDate?:string;overview:string;rating?:number;genres:string[];seasons?:Season[]};export type ProviderStatus={enabled:boolean;configured:boolean;language:string;region:string;status:string};export type Unmatched={fileId:string;fileName:string;candidateTitle:string;candidateYear:number;seasonNumber:number;episodeStart:number;episodeEnd:number;state:string;score:number;confidence:string;candidates:Array<{providerId:string;title:string;year:number;overview?:string}>};
-export type Artwork={id:string;entityType:string;entityId:string;type:'POSTER'|'BACKDROP'|'LOGO'|'SEASON_POSTER'|'EPISODE_STILL';selected:boolean;manualSelection:boolean;cached:boolean;mimeType?:string};
-export type CapabilityProfile={schemaVersion:1;clientName:string;clientVersion:string;platform:string;supportedContainers:string[];supportedVideoCodecs:string[];supportedAudioCodecs:string[];maximumVideoWidth:number;maximumVideoHeight:number;hdrCapabilities:string[];subtitleFormats:string[];directPlaySupport:boolean};export type PlaybackReason={code:string;value?:string};export type PlaybackVersion={id:string;container:string;videoCodec:string;audioCodecs:string[];width?:number;height?:number;resolution?:string;hdr?:string;label?:string;available:boolean};export type PlaybackSession={id:string;logicalType:'MOVIE'|'EPISODE';logicalId:string;selectedVersion:PlaybackVersion;decision:{mode:'DIRECT_PLAY'|'UNSUPPORTED';reasons:PlaybackReason[]};state:string;position:number;duration:number;resumePosition:number;mediaUrl?:string};
-export function browserCapabilities():CapabilityProfile{const video=document.createElement('video'),mp4=video.canPlayType('video/mp4; codecs="avc1.42E01E, mp4a.40.2"')!=='',webm=video.canPlayType('video/webm; codecs="vp9, opus"')!=='';return{schemaVersion:1,clientName:'VyNode Web',clientVersion:'0.1.0',platform:navigator.platform||'web',supportedContainers:[...(mp4?['mp4']:[]),...(webm?['webm']:[])],supportedVideoCodecs:[...(mp4?['h264']:[]),...(webm?['vp8','vp9']:[])],supportedAudioCodecs:[...(mp4?['aac']:[]),...(webm?['opus','vorbis']:[])],maximumVideoWidth:screen.width*devicePixelRatio,maximumVideoHeight:screen.height*devicePixelRatio,hdrCapabilities:[],subtitleFormats:['webvtt'],directPlaySupport:mp4||webm}}
-async function raw<T>(path:string,init:RequestInit={}):Promise<T>{const headers=new Headers(init.headers);if(init.body)headers.set('Content-Type','application/json');if(accessToken)headers.set('Authorization',`Bearer ${accessToken}`);const response=await fetch(path,{...init,headers,credentials:'same-origin'});if(!response.ok){const body=await response.json().catch(()=>null)as{error?:{code?:string;message?:string}}|null;const error=new Error(body?.error?.message||`Server returned ${response.status}`)as Error&{status:number;code?:string};error.status=response.status;error.code=body?.error?.code;throw error}return response.status===204?undefined as T:response.json()as Promise<T>};function accept(v:{accessToken:string;user:User}){accessToken=v.accessToken;return v.user}
-export function refresh():Promise<User>{if(!refreshFlight)refreshFlight=raw<{accessToken:string;user:User}>('/api/v1/auth/refresh',{method:'POST',body:'{}'}).then(accept).finally(()=>{refreshFlight=null});return refreshFlight}
-async function call<T>(path:string,init:RequestInit={}):Promise<T>{try{return await raw<T>(path,init)}catch(reason){if((reason as{status?:number}).status!==401||path.includes('/auth/'))throw reason;await refresh();return raw<T>(path,init)}}
-async function blob(path:string):Promise<Blob>{const run=async()=>{const headers=new Headers();if(accessToken)headers.set('Authorization',`Bearer ${accessToken}`);const response=await fetch(path,{headers,credentials:'same-origin'});if(!response.ok){const e=new Error(`Artwork returned ${response.status}`)as Error&{status:number};e.status=response.status;throw e}return response.blob()};try{return await run()}catch(reason){if((reason as{status?:number}).status!==401)throw reason;await refresh();return run()}}
-export const api={status:()=>raw<{setupRequired:boolean}>('/api/v1/setup/status'),setup:(body:unknown)=>raw<{accessToken:string;user:User}>('/api/v1/setup/owner',{method:'POST',body:JSON.stringify(body)}).then(accept),login:(username:string,password:string)=>raw<{accessToken:string;user:User}>('/api/v1/auth/login',{method:'POST',body:JSON.stringify({username,password,device:{name:'Web browser',clientName:'VyNode Web',platform:navigator.platform||'web'}})}).then(accept),refresh,info:()=>raw<SystemInfo>('/api/v1/system/info'),me:()=>call<User>('/api/v1/account/me'),sessions:()=>call<{sessions:Session[]}>('/api/v1/account/sessions'),revoke:(id:string)=>call<void>(`/api/v1/account/sessions/${id}`,{method:'DELETE'}),logoutOthers:()=>call<void>('/api/v1/auth/logout-others',{method:'POST'}),password:(currentPassword:string,newPassword:string)=>call<void>('/api/v1/account/password',{method:'POST',body:JSON.stringify({currentPassword,newPassword})}),users:()=>call<{users:User[]}>('/api/v1/admin/users'),createUser:(body:unknown)=>call<User>('/api/v1/admin/users',{method:'POST',body:JSON.stringify(body)}),setEnabled:(id:string,enabled:boolean)=>call<void>(`/api/v1/admin/users/${id}`,{method:'PATCH',body:JSON.stringify({enabled})}),audit:(offset=0)=>call<{events:AuditEvent[];limit:number;offset:number}>(`/api/v1/admin/audit?limit=25&offset=${offset}`),libraries:()=>call<{libraries:Library[]}>('/api/v1/libraries'),library:(id:string)=>call<Library>(`/api/v1/libraries/${id}`),createLibrary:(body:unknown)=>call<Library>('/api/v1/libraries',{method:'POST',body:JSON.stringify(body)}),deleteLibrary:(id:string)=>call<void>(`/api/v1/libraries/${id}`,{method:'DELETE'}),validateSource:(path:string,libraryId='')=>call<{valid:boolean;normalizedPath:string}>('/api/v1/libraries/sources/validate',{method:'POST',body:JSON.stringify({path,libraryId})}),addSource:(libraryId:string,path:string)=>call(`/api/v1/libraries/${libraryId}/sources`,{method:'POST',body:JSON.stringify({path})}),removeSource:(libraryId:string,sourceId:string)=>call<void>(`/api/v1/libraries/${libraryId}/sources/${sourceId}`,{method:'DELETE'}),scan:(id:string)=>call<ScanJob>(`/api/v1/libraries/${id}/scan`,{method:'POST'}),scanStatus:(libraryId:string,jobId:string)=>call<ScanJob>(`/api/v1/libraries/${libraryId}/scans/${jobId}`),cancelScan:(libraryId:string,jobId:string)=>call<void>(`/api/v1/libraries/${libraryId}/scans/${jobId}`,{method:'DELETE'}),items:(id:string,offset=0)=>call<{items:MediaFile[]}>(`/api/v1/libraries/${id}/items?limit=50&offset=${offset}`),mediaFile:(id:string)=>call<MediaFile>(`/api/v1/media/files/${id}`),movies:()=>call<{movies:Movie[]}>('/api/v1/movies'),movie:(id:string)=>call<Movie>(`/api/v1/movies/${id}`),shows:()=>call<{shows:Show[]}>('/api/v1/shows'),show:(id:string)=>call<Show>(`/api/v1/shows/${id}`),artwork:(kind:'movies'|'shows',id:string)=>call<{artwork:Artwork[]}>(`/api/v1/${kind}/${id}/artwork`),artworkBlob:(id:string)=>blob(`/api/v1/artwork/${id}/content`),selectArtwork:(kind:'movies'|'shows',entityId:string,id:string)=>call<void>(`/api/v1/${kind}/${entityId}/artwork/${id}/select`,{method:'POST'}),provider:()=>call<ProviderStatus>('/api/v1/admin/metadata/provider'),configureProvider:(body:unknown)=>call<ProviderStatus>('/api/v1/admin/metadata/provider',{method:'PUT',body:JSON.stringify(body)}),testProvider:()=>call('/api/v1/admin/metadata/provider/test',{method:'POST'}),unmatched:()=>call<{items:Unmatched[]}>('/api/v1/admin/metadata/unmatched'),providerSearch:(type:string,q:string,year=0)=>call<{candidates:Unmatched['candidates']}>(`/api/v1/admin/metadata/provider/search?type=${type}&q=${encodeURIComponent(q)}&year=${year}`),match:(fileId:string,body:unknown)=>call(`/api/v1/admin/metadata/files/${fileId}/match`,{method:'POST',body:JSON.stringify(body)}),unmatch:(fileId:string)=>call<void>(`/api/v1/admin/metadata/files/${fileId}/unmatch`,{method:'POST'}),playbackVersions:(type:'MOVIE'|'EPISODE',id:string)=>call<{versions:PlaybackVersion[]}>(`/api/v1/playback/${type}/${id}/versions`),startPlayback:(logicalType:'MOVIE'|'EPISODE',logicalId:string,requestedVersionId='',resume=true)=>call<PlaybackSession>('/api/v1/playback/sessions',{method:'POST',body:JSON.stringify({logicalType,logicalId,requestedVersionId,resume,capabilities:browserCapabilities()})}),updatePlayback:(id:string,state:string,position:number,duration:number)=>call<void>(`/api/v1/playback/sessions/${id}`,{method:'PATCH',body:JSON.stringify({state,position,duration})}),stopPlayback:(id:string)=>call<void>(`/api/v1/playback/sessions/${id}`,{method:'DELETE'}),progress:(type:'MOVIE'|'EPISODE',id:string)=>call<{position:number;duration:number;watched:boolean}>(`/api/v1/playback/${type}/${id}/progress`),markWatched:(type:'MOVIE'|'EPISODE',id:string,watched:boolean)=>call<void>(`/api/v1/playback/${type}/${id}/watched`,{method:'PUT',body:JSON.stringify({watched})}),activePlayback:()=>call<{sessions:PlaybackSession[]}>('/api/v1/admin/playback/sessions'),adminStopPlayback:(id:string)=>call<void>(`/api/v1/admin/playback/sessions/${id}`,{method:'DELETE'}),logout:()=>call<void>('/api/v1/auth/logout',{method:'POST'}).finally(()=>{accessToken=''})}
+export type User = {
+  id: string;
+  username: string;
+  displayName: string;
+  role: "OWNER" | "ADMIN" | "USER";
+  status: string;
+  createdAt: string;
+};
+export type SystemInfo = {
+  version: string;
+  instanceId: string;
+  serverName: string;
+  databaseType: string;
+  operatingSystem: string;
+  architecture: string;
+  uptimeSeconds: number;
+};
+export type Session = {
+  id: string;
+  deviceName: string;
+  clientName: string;
+  platform: string;
+  createdAt: string;
+  lastActivityAt: string;
+  current: boolean;
+};
+export type AuditEvent = {
+  id: number;
+  event: string;
+  actorUserId: string;
+  targetType: string;
+  targetId: string;
+  timestamp: string;
+  metadata: Record<string, unknown>;
+};
+let accessToken = "";
+let refreshFlight: Promise<User> | null = null;
+export type LibrarySource = {
+  id: string;
+  configuredPath: string;
+  normalizedPath: string;
+  lastScanStatus?: string;
+  lastSuccessfulScanAt?: string;
+  lastScanError?: string;
+};
+export type Library = {
+  id: string;
+  name: string;
+  type: "MOVIES" | "TV";
+  enabled: boolean;
+  sources?: LibrarySource[];
+  fileCount: number;
+  availableCount: number;
+  missingCount: number;
+  probeFailureCount: number;
+};
+export type ScanJob = {
+  id: string;
+  libraryId: string;
+  state: string;
+  filesDiscovered: number;
+  candidatesFound: number;
+  filesProbed: number;
+  filesAdded: number;
+  filesUpdated: number;
+  filesUnchanged: number;
+  filesMissing: number;
+  filesFailed: number;
+  currentRelativePath?: string;
+};
+export type MediaStream = {
+  id: string;
+  index: number;
+  type: string;
+  codec: string;
+  profile: string;
+  width?: number;
+  height?: number;
+  channels?: number;
+  language?: string;
+  title?: string;
+  forced: boolean;
+  default: boolean;
+  colorTransfer?: string;
+};
+export type MediaFile = {
+  id: string;
+  sourceId: string;
+  relativePath: string;
+  fileName: string;
+  sizeBytes: number;
+  modifiedAtNs: number;
+  availability: string;
+  probeStatus: string;
+  probeError?: string;
+  containerFormat?: string;
+  durationSeconds?: number;
+  bitrate?: number;
+  resolutionClass?: string;
+  hdrClass?: string;
+  candidateTitle?: string;
+  candidateYear?: number;
+  seasonNumber?: number;
+  episodeStart?: number;
+  episodeEnd?: number;
+  streams?: MediaStream[];
+};
+export type MediaVersion = {
+  id: string;
+  fileId: string;
+  label: string;
+  resolution: string;
+  codec: string;
+  hdr: string;
+};
+export type Movie = {
+  id: string;
+  title: string;
+  year?: number;
+  releaseDate?: string;
+  runtimeMinutes?: number;
+  overview: string;
+  contentRating?: string;
+  rating?: number;
+  voteCount?: number;
+  genres: string[];
+  versions?: MediaVersion[];
+};
+export type Episode = {
+  id: string;
+  episodeNumber: number;
+  title: string;
+  overview: string;
+  airDate: string;
+  runtimeMinutes: number;
+  available: boolean;
+};
+export type Season = {
+  id: string;
+  seasonNumber: number;
+  title: string;
+  overview: string;
+  airDate: string;
+  episodes: Episode[];
+};
+export type Show = {
+  id: string;
+  title: string;
+  year?: number;
+  firstAirDate?: string;
+  overview: string;
+  rating?: number;
+  genres: string[];
+  seasons?: Season[];
+};
+export type ProviderStatus = {
+  enabled: boolean;
+  configured: boolean;
+  language: string;
+  region: string;
+  status: string;
+};
+export type Unmatched = {
+  fileId: string;
+  fileName: string;
+  candidateTitle: string;
+  candidateYear: number;
+  seasonNumber: number;
+  episodeStart: number;
+  episodeEnd: number;
+  state: string;
+  score: number;
+  confidence: string;
+  candidates: Array<{
+    providerId: string;
+    title: string;
+    year: number;
+    overview?: string;
+  }>;
+};
+export type Artwork = {
+  id: string;
+  entityType: string;
+  entityId: string;
+  type: "POSTER" | "BACKDROP" | "LOGO" | "SEASON_POSTER" | "EPISODE_STILL";
+  selected: boolean;
+  manualSelection: boolean;
+  cached: boolean;
+  mimeType?: string;
+};
+export type CapabilityProfile = {
+  schemaVersion: 2;
+  clientName: string;
+  clientVersion: string;
+  platform: string;
+  supportedContainers: string[];
+  supportedVideoCodecs: string[];
+  supportedAudioCodecs: string[];
+  maximumVideoWidth: number;
+  maximumVideoHeight: number;
+  maximumAudioChannels: number;
+  hdrCapabilities: string[];
+  subtitleFormats: string[];
+  directPlaySupport: boolean;
+  fragmentedMp4Support: boolean;
+};
+export type PlaybackReason = { code: string; value?: string };
+export type PlaybackTrack = {
+  id: string;
+  kind: string;
+  codec: string;
+  language?: string;
+  title?: string;
+  channels?: number;
+  default: boolean;
+  commentary?: boolean;
+  usable: boolean;
+  reason?: string;
+  source?: string;
+};
+export type PlaybackVersion = {
+  id: string;
+  container: string;
+  videoCodec: string;
+  audioCodecs: string[];
+  audioTracks?: PlaybackTrack[];
+  subtitleTracks?: PlaybackTrack[];
+  width?: number;
+  height?: number;
+  resolution?: string;
+  hdr?: string;
+  label?: string;
+  available: boolean;
+};
+export type PlaybackSession = {
+  id: string;
+  title?: string;
+  logicalType: "MOVIE" | "EPISODE";
+  logicalId: string;
+  selectedVersion: PlaybackVersion;
+  decision: {
+    mode: "DIRECT_PLAY" | "DIRECT_STREAM" | "AUDIO_TRANSCODE" | "UNSUPPORTED";
+    reasons: PlaybackReason[];
+    plan: {
+      video: { action: string; sourceCodec?: string };
+      audio: { action: string; sourceCodec?: string; targetCodec?: string };
+      container: { source: string; target: string };
+    };
+  };
+  state: string;
+  position: number;
+  duration: number;
+  resumePosition: number;
+  mediaUrl?: string;
+  subtitleUrl?: string;
+};
+export type ContinueItem = {
+  logicalType: "MOVIE" | "EPISODE";
+  logicalId: string;
+  title: string;
+  position: number;
+  duration: number;
+  progress: number;
+  lastPlayedAt: string;
+};
+export function browserCapabilities(): CapabilityProfile {
+  const video = document.createElement("video"),
+    mp4 =
+      video.canPlayType('video/mp4; codecs="avc1.42E01E, mp4a.40.2"') !== "",
+    webm = video.canPlayType('video/webm; codecs="vp9, opus"') !== "";
+  return {
+    schemaVersion: 2,
+    clientName: "VyNode Web",
+    clientVersion: "0.1.0",
+    platform: navigator.platform || "web",
+    supportedContainers: [...(mp4 ? ["mp4"] : []), ...(webm ? ["webm"] : [])],
+    supportedVideoCodecs: [
+      ...(mp4 ? ["h264"] : []),
+      ...(webm ? ["vp8", "vp9"] : []),
+    ],
+    supportedAudioCodecs: [
+      ...(mp4 ? ["aac"] : []),
+      ...(webm ? ["opus", "vorbis"] : []),
+    ],
+    maximumVideoWidth: screen.width * devicePixelRatio,
+    maximumVideoHeight: screen.height * devicePixelRatio,
+    maximumAudioChannels: 2,
+    hdrCapabilities: [],
+    subtitleFormats: ["webvtt"],
+    directPlaySupport: mp4 || webm,
+    fragmentedMp4Support: mp4,
+  };
+}
+async function raw<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  if (init.body) headers.set("Content-Type", "application/json");
+  if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
+  const response = await fetch(path, {
+    ...init,
+    headers,
+    credentials: "same-origin",
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as {
+      error?: { code?: string; message?: string };
+    } | null;
+    const error = new Error(
+      body?.error?.message || `Server returned ${response.status}`,
+    ) as Error & { status: number; code?: string };
+    error.status = response.status;
+    error.code = body?.error?.code;
+    throw error;
+  }
+  return response.status === 204
+    ? (undefined as T)
+    : (response.json() as Promise<T>);
+}
+function accept(v: { accessToken: string; user: User }) {
+  accessToken = v.accessToken;
+  return v.user;
+}
+export function refresh(): Promise<User> {
+  if (!refreshFlight)
+    refreshFlight = raw<{ accessToken: string; user: User }>(
+      "/api/v1/auth/refresh",
+      { method: "POST", body: "{}" },
+    )
+      .then(accept)
+      .finally(() => {
+        refreshFlight = null;
+      });
+  return refreshFlight;
+}
+async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
+  try {
+    return await raw<T>(path, init);
+  } catch (reason) {
+    if (
+      (reason as { status?: number }).status !== 401 ||
+      path.includes("/auth/")
+    )
+      throw reason;
+    await refresh();
+    return raw<T>(path, init);
+  }
+}
+async function blob(path: string): Promise<Blob> {
+  const run = async () => {
+    const headers = new Headers();
+    if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
+    const response = await fetch(path, { headers, credentials: "same-origin" });
+    if (!response.ok) {
+      const e = new Error(`Artwork returned ${response.status}`) as Error & {
+        status: number;
+      };
+      e.status = response.status;
+      throw e;
+    }
+    return response.blob();
+  };
+  try {
+    return await run();
+  } catch (reason) {
+    if ((reason as { status?: number }).status !== 401) throw reason;
+    await refresh();
+    return run();
+  }
+}
+export const api = {
+  status: () => raw<{ setupRequired: boolean }>("/api/v1/setup/status"),
+  setup: (body: unknown) =>
+    raw<{ accessToken: string; user: User }>("/api/v1/setup/owner", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }).then(accept),
+  login: (username: string, password: string) =>
+    raw<{ accessToken: string; user: User }>("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({
+        username,
+        password,
+        device: {
+          name: "Web browser",
+          clientName: "VyNode Web",
+          platform: navigator.platform || "web",
+        },
+      }),
+    }).then(accept),
+  refresh,
+  info: () => raw<SystemInfo>("/api/v1/system/info"),
+  me: () => call<User>("/api/v1/account/me"),
+  sessions: () => call<{ sessions: Session[] }>("/api/v1/account/sessions"),
+  revoke: (id: string) =>
+    call<void>(`/api/v1/account/sessions/${id}`, { method: "DELETE" }),
+  logoutOthers: () =>
+    call<void>("/api/v1/auth/logout-others", { method: "POST" }),
+  password: (currentPassword: string, newPassword: string) =>
+    call<void>("/api/v1/account/password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }),
+  users: () => call<{ users: User[] }>("/api/v1/admin/users"),
+  createUser: (body: unknown) =>
+    call<User>("/api/v1/admin/users", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  setEnabled: (id: string, enabled: boolean) =>
+    call<void>(`/api/v1/admin/users/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ enabled }),
+    }),
+  audit: (offset = 0) =>
+    call<{ events: AuditEvent[]; limit: number; offset: number }>(
+      `/api/v1/admin/audit?limit=25&offset=${offset}`,
+    ),
+  libraries: () => call<{ libraries: Library[] }>("/api/v1/libraries"),
+  library: (id: string) => call<Library>(`/api/v1/libraries/${id}`),
+  createLibrary: (body: unknown) =>
+    call<Library>("/api/v1/libraries", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  deleteLibrary: (id: string) =>
+    call<void>(`/api/v1/libraries/${id}`, { method: "DELETE" }),
+  validateSource: (path: string, libraryId = "") =>
+    call<{ valid: boolean; normalizedPath: string }>(
+      "/api/v1/libraries/sources/validate",
+      { method: "POST", body: JSON.stringify({ path, libraryId }) },
+    ),
+  addSource: (libraryId: string, path: string) =>
+    call(`/api/v1/libraries/${libraryId}/sources`, {
+      method: "POST",
+      body: JSON.stringify({ path }),
+    }),
+  removeSource: (libraryId: string, sourceId: string) =>
+    call<void>(`/api/v1/libraries/${libraryId}/sources/${sourceId}`, {
+      method: "DELETE",
+    }),
+  scan: (id: string) =>
+    call<ScanJob>(`/api/v1/libraries/${id}/scan`, { method: "POST" }),
+  scanStatus: (libraryId: string, jobId: string) =>
+    call<ScanJob>(`/api/v1/libraries/${libraryId}/scans/${jobId}`),
+  cancelScan: (libraryId: string, jobId: string) =>
+    call<void>(`/api/v1/libraries/${libraryId}/scans/${jobId}`, {
+      method: "DELETE",
+    }),
+  items: (id: string, offset = 0) =>
+    call<{ items: MediaFile[] }>(
+      `/api/v1/libraries/${id}/items?limit=50&offset=${offset}`,
+    ),
+  mediaFile: (id: string) => call<MediaFile>(`/api/v1/media/files/${id}`),
+  movies: () => call<{ movies: Movie[] }>("/api/v1/movies"),
+  movie: (id: string) => call<Movie>(`/api/v1/movies/${id}`),
+  shows: () => call<{ shows: Show[] }>("/api/v1/shows"),
+  show: (id: string) => call<Show>(`/api/v1/shows/${id}`),
+  artwork: (kind: "movies" | "shows", id: string) =>
+    call<{ artwork: Artwork[] }>(`/api/v1/${kind}/${id}/artwork`),
+  artworkBlob: (id: string) => blob(`/api/v1/artwork/${id}/content`),
+  selectArtwork: (kind: "movies" | "shows", entityId: string, id: string) =>
+    call<void>(`/api/v1/${kind}/${entityId}/artwork/${id}/select`, {
+      method: "POST",
+    }),
+  provider: () => call<ProviderStatus>("/api/v1/admin/metadata/provider"),
+  configureProvider: (body: unknown) =>
+    call<ProviderStatus>("/api/v1/admin/metadata/provider", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  testProvider: () =>
+    call("/api/v1/admin/metadata/provider/test", { method: "POST" }),
+  unmatched: () =>
+    call<{ items: Unmatched[] }>("/api/v1/admin/metadata/unmatched"),
+  providerSearch: (type: string, q: string, year = 0) =>
+    call<{ candidates: Unmatched["candidates"] }>(
+      `/api/v1/admin/metadata/provider/search?type=${type}&q=${encodeURIComponent(q)}&year=${year}`,
+    ),
+  match: (fileId: string, body: unknown) =>
+    call(`/api/v1/admin/metadata/files/${fileId}/match`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  unmatch: (fileId: string) =>
+    call<void>(`/api/v1/admin/metadata/files/${fileId}/unmatch`, {
+      method: "POST",
+    }),
+  playbackVersions: (type: "MOVIE" | "EPISODE", id: string) =>
+    call<{ versions: PlaybackVersion[] }>(
+      `/api/v1/playback/${type}/${id}/versions`,
+    ),
+  startPlayback: (
+    logicalType: "MOVIE" | "EPISODE",
+    logicalId: string,
+    requestedVersionId = "",
+    resume = true,
+    selectedAudioTrackId = "",
+    selectedSubtitleTrackId = "",
+  ) =>
+    call<PlaybackSession>("/api/v1/playback/sessions", {
+      method: "POST",
+      body: JSON.stringify({
+        logicalType,
+        logicalId,
+        requestedVersionId,
+        resume,
+        selectedAudioTrackId,
+        selectedSubtitleTrackId,
+        capabilities: browserCapabilities(),
+      }),
+    }),
+  continueWatching: () =>
+    call<{ items: ContinueItem[] }>("/api/v1/playback/continue-watching"),
+  updatePlayback: (
+    id: string,
+    state: string,
+    position: number,
+    duration: number,
+  ) =>
+    call<void>(`/api/v1/playback/sessions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ state, position, duration }),
+    }),
+  stopPlayback: (id: string) =>
+    call<void>(`/api/v1/playback/sessions/${id}`, { method: "DELETE" }),
+  progress: (type: "MOVIE" | "EPISODE", id: string) =>
+    call<{ position: number; duration: number; watched: boolean }>(
+      `/api/v1/playback/${type}/${id}/progress`,
+    ),
+  markWatched: (type: "MOVIE" | "EPISODE", id: string, watched: boolean) =>
+    call<void>(`/api/v1/playback/${type}/${id}/watched`, {
+      method: "PUT",
+      body: JSON.stringify({ watched }),
+    }),
+  activePlayback: () =>
+    call<{ sessions: PlaybackSession[] }>("/api/v1/admin/playback/sessions"),
+  adminStopPlayback: (id: string) =>
+    call<void>(`/api/v1/admin/playback/sessions/${id}`, { method: "DELETE" }),
+  logout: () =>
+    call<void>("/api/v1/auth/logout", { method: "POST" }).finally(() => {
+      accessToken = "";
+    }),
+};

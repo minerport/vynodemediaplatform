@@ -1,5 +1,7 @@
 # Direct Play and playback sessions
 
+Phase 5 adds Direct Stream and audio-only transcode while permanently preferring Direct Play. See [Playback pipeline](PLAYBACK_PIPELINE.md) and [Subtitles](SUBTITLES.md). Generated media uses validated time-based restarts instead of byte ranges. Its route-scoped credential lasts four hours and remains revocable through the bound login session.
+
 Phase 4 delivers original local media bytes only. The dedicated playback service resolves a typed logical `MOVIE` or `EPISODE` through its physical associations, evaluates every available version against a versioned client capability profile, selects the highest-resolution compatible version (then higher bitrate), and returns either `DIRECT_PLAY` or `UNSUPPORTED` with stable reason codes. A requested version bypasses automatic selection but never compatibility checks. No FFmpeg, remux, HLS, or transcoding fallback exists.
 
 Supported combinations are determined by the submitted profile. The web adapter conservatively reports MP4/H.264/AAC and WebM/VP8-or-VP9/Opus-or-Vorbis only when `canPlayType` reports support. Container, video, every audio stream, resolution limits, and HDR claims participate in the decision. Initial reason codes include `CONTAINER_UNSUPPORTED`, `VIDEO_CODEC_UNSUPPORTED`, `AUDIO_CODEC_UNSUPPORTED`, `RESOLUTION_UNSUPPORTED`, `HDR_UNSUPPORTED`, `MEDIA_UNAVAILABLE`, and `NO_COMPATIBLE_VERSION`.

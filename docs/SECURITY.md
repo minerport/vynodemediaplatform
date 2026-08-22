@@ -1,5 +1,7 @@
 # Security
 
+Generated playback uses structured FFmpeg arguments and never a shell. Clients may select stored track IDs and a bounded timestamp but cannot supply filters or flags. Diagnostics are bounded and redact paths; media and subtitle credentials are route-scoped, HttpOnly, SameSite, and bound to an active login session.
+
 Metadata credentials are accepted only by capability-gated owner/admin routes, stored outside ordinary settings responses, and never logged or redisplayed. Provider clients bound time and response size and constrain redirects. Artwork writes are confined to the application-controlled config cache; media roots remain read-only inputs.
 
 Passwords are Argon2id hashes. Tokens, passwords, hashes, and authorization headers are excluded from API errors, audit metadata, and request logs. Refresh digests and append-oriented audit rows live in SQLite; the signing key is a restrictive file under `/config`. No secrets are baked into images.

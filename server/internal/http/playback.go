@@ -25,6 +25,9 @@ func (h *Handler) playbackRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/v1/admin/playback/sessions/{sessionId}", h.require(auth.CapPlaybackSessionsManage, h.adminStopPlayback))
 	mux.HandleFunc("GET /api/v1/playback/sessions/{sessionId}/media", h.playbackMedia)
 	mux.HandleFunc("HEAD /api/v1/playback/sessions/{sessionId}/media", h.playbackMedia)
+	mux.HandleFunc("GET /api/v1/playback/sessions/{sessionId}/subtitles/{trackId}", h.playbackSubtitle)
+	mux.HandleFunc("GET /api/v1/playback/continue-watching", h.require(auth.CapPlaybackSelfManage, h.continueWatching))
+	mux.HandleFunc("GET /api/v1/admin/playback/capabilities", h.require(auth.CapPlaybackSessionsView, h.playbackCapabilities))
 }
 
 func (h *Handler) startPlayback(w http.ResponseWriter, r *http.Request, p auth.Principal) {
@@ -41,7 +44,7 @@ func (h *Handler) startPlayback(w http.ResponseWriter, r *http.Request, p auth.P
 		parts := strings.SplitN(out.MediaURL, "?token=", 2)
 		if len(parts) == 2 {
 			secure := r.TLS != nil
-			http.SetCookie(w, &http.Cookie{Name: mediaCookie(out.ID), Value: parts[1], Path: parts[0], HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode, MaxAge: int(time.Hour.Seconds())})
+			http.SetCookie(w, &http.Cookie{Name: mediaCookie(out.ID), Value: parts[1], Path: "/api/v1/playback/sessions/" + out.ID + "/", HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode, MaxAge: int((4 * time.Hour).Seconds())})
 			out.MediaURL = parts[0]
 		}
 	}
@@ -126,6 +129,10 @@ func (h *Handler) playbackError(w http.ResponseWriter, r *http.Request, err erro
 		writeError(w, r, 410, "PLAYBACK_SESSION_ENDED", "The playback session is no longer active.")
 	case errors.Is(err, playback.ErrNotFound):
 		writeError(w, r, 404, "NOT_FOUND", "The requested logical media was not found.")
+	case errors.Is(err, playback.ErrCapacity):
+		writeError(w, r, 503, "PLAYBACK_CAPACITY_REACHED", "All generated playback pipelines are currently in use.")
+	case errors.Is(err, playback.ErrPipelineUnavailable):
+		writeError(w, r, 503, "FFMPEG_UNAVAILABLE", "Generated playback is unavailable on this server.")
 	default:
 		writeError(w, r, 500, "INTERNAL_ERROR", "An unexpected playback error occurred.")
 	}
@@ -146,6 +153,29 @@ func (h *Handler) playbackMedia(w http.ResponseWriter, r *http.Request) {
 	a, err := h.playback.AuthorizeMedia(r.Context(), r.PathValue("sessionId"), token)
 	if err != nil {
 		h.playbackError(w, r, err)
+		return
+	}
+	if a.Mode != playback.DirectPlay {
+		if r.Header.Get("Range") != "" {
+			w.Header().Set("Content-Range", "bytes */*")
+			w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+			return
+		}
+		start := 0.0
+		if raw := r.URL.Query().Get("start"); raw != "" {
+			start, err = strconv.ParseFloat(raw, 64)
+			if err != nil || start < 0 || start > 7*24*3600 {
+				h.playbackError(w, r, playback.ErrValidation)
+				return
+			}
+		}
+		w.Header().Set("Content-Type", "video/mp4")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-VyNode-Playback-Mode", string(a.Mode))
+		w.WriteHeader(http.StatusOK)
+		if r.Method != "HEAD" {
+			_ = h.playback.StreamGenerated(r.Context(), a, start, w)
+		}
 		return
 	}
 	f, err := os.Open(a.Path)
@@ -181,6 +211,33 @@ func (h *Handler) playbackMedia(w http.ResponseWriter, r *http.Request) {
 		n, _ := io.CopyN(w, io.NewSectionReader(f, start, length), length)
 		h.playback.AddBytes(r.Context(), a.SessionID, n)
 	}
+}
+
+func (h *Handler) playbackSubtitle(w http.ResponseWriter, r *http.Request) {
+	token := ""
+	if c, e := r.Cookie(mediaCookie(r.PathValue("sessionId"))); e == nil {
+		token = c.Value
+	}
+	b, e := h.playback.Subtitle(r.Context(), r.PathValue("sessionId"), token, r.PathValue("trackId"))
+	if e != nil {
+		h.playbackError(w, r, e)
+		return
+	}
+	w.Header().Set("Content-Type", "text/vtt; charset=utf-8")
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.WriteHeader(200)
+	_, _ = w.Write(b)
+}
+func (h *Handler) continueWatching(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+	v, e := h.playback.ContinueWatching(r.Context(), p.UserID)
+	if e != nil {
+		h.playbackError(w, r, e)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"items": v})
+}
+func (h *Handler) playbackCapabilities(w http.ResponseWriter, r *http.Request, _ auth.Principal) {
+	writeJSON(w, 200, h.playback.Capabilities())
 }
 func singleRange(value string, size int64) (int64, int64, bool) {
 	if size <= 0 || !strings.HasPrefix(value, "bytes=") {

@@ -1,5 +1,7 @@
 # Dependencies and licenses
 
+The Debian Bookworm image installs Debian's `ffmpeg` package for FFmpeg and FFprobe. Its exact version is reported by the safe admin capability API. Redistributors must review Debian's FFmpeg build configuration and applicable LGPL/GPL codec obligations.
+
 TMDb is an optional external metadata service accessed through its documented API using an operator-supplied credential. VyNode does not bundle TMDb data or credentials. Image validation uses Go standard-library decoders; Phase 3 adds no runtime package dependency.
 
 | Dependency | Use | License |

@@ -20,8 +20,9 @@ import (
 )
 
 type Runtime struct {
-	Server *http.Server
-	store  *database.Store
+	Server   *http.Server
+	store    *database.Store
+	playback *playback.Service
 }
 
 func Initialize(ctx context.Context, cfg config.Config, logger *slog.Logger) (*Runtime, error) {
@@ -52,11 +53,15 @@ func Initialize(ctx context.Context, cfg config.Config, logger *slog.Logger) (*R
 	}
 	provider := metadata.NewTMDb(providerBase, metadata.LoadToken(cfg.ConfigDir), buildinfo.Version)
 	metadataService := metadata.New(store.DB, cfg.ConfigDir, provider, os.Getenv("VYNODE_TMDB_IMAGE_BASE_URL"), os.Getenv("VYNODE_METADATA_ALLOW_INSECURE_TEST_PROVIDER"))
-	playbackService := playback.New(store.DB)
+	pipeline := playback.NewFFmpeg(cfg.FFmpegPath, cfg.PlaybackPipelines)
+	playbackService := playback.New(store.DB, pipeline)
 	server := &http.Server{Addr: cfg.HTTPAddress, Handler: httpserver.NewHandler(logger, store, info, authService, mediaService, metadataService, playbackService, cfg.AllowedOrigin), ReadHeaderTimeout: cfg.ReadHeaderTimeout, IdleTimeout: cfg.IdleTimeout}
-	return &Runtime{Server: server, store: store}, nil
+	return &Runtime{Server: server, store: store, playback: playbackService}, nil
 }
 func (r *Runtime) Shutdown(ctx context.Context) error {
+	if r.playback != nil {
+		r.playback.Close()
+	}
 	serverErr := r.Server.Shutdown(ctx)
 	dbErr := r.store.Close()
 	if serverErr != nil {
