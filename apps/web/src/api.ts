@@ -282,8 +282,14 @@ export function browserCapabilities(): CapabilityProfile {
       ...(mp4 ? ["aac"] : []),
       ...(webm ? ["opus", "vorbis"] : []),
     ],
-    maximumVideoWidth: screen.width * devicePixelRatio,
-    maximumVideoHeight: screen.height * devicePixelRatio,
+    maximumVideoWidth: Math.floor(
+      (globalThis.screen?.width || globalThis.innerWidth || 1920) *
+      (globalThis.devicePixelRatio || 1),
+    ),
+    maximumVideoHeight: Math.floor(
+      (globalThis.screen?.height || globalThis.innerHeight || 1080) *
+      (globalThis.devicePixelRatio || 1),
+    ),
     maximumAudioChannels: 2,
     hdrCapabilities: [],
     subtitleFormats: ["webvtt"],

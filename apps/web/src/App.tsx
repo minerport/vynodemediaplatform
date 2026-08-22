@@ -945,11 +945,17 @@ function Player({
 }) {
   const video = useRef<HTMLVideoElement>(null),
     sessionRef = useRef<PlaybackSession | null>(null),
+    generatedAbort = useRef<AbortController | null>(null),
+    generatedURL = useRef(""),
+    generatedEpoch = useRef(0),
+    internalSeek = useRef(false),
     [session, setSession] = useState<PlaybackSession | null>(null),
     [versions, setVersions] = useState<PlaybackVersion[]>([]),
     [choice, setChoice] = useState(""),
     [audio, setAudio] = useState(""),
     [subtitle, setSubtitle] = useState(""),
+    [position, setPosition] = useState(0),
+    [playing, setPlaying] = useState(false),
     [message, setMessage] = useState("Preparing direct play…");
   const report = (state: string) => {
     const v = video.current,
@@ -964,6 +970,92 @@ function Player({
         )
         .catch(() => {});
   };
+  async function attachGeneratedStream(s: PlaybackSession, startAt: number, resumePlayback = false) {
+    const v = video.current;
+    if (!v || !s.mediaUrl) return;
+    const epoch = ++generatedEpoch.current;
+    internalSeek.current = true;
+    generatedAbort.current?.abort();
+    generatedAbort.current = new AbortController();
+    if (generatedURL.current) URL.revokeObjectURL(generatedURL.current);
+    const mediaSource = new MediaSource();
+    generatedURL.current = URL.createObjectURL(mediaSource);
+    v.src = generatedURL.current;
+    setMessage(startAt > 0 ? "Preparing seek…" : "Preparing stream…");
+    await new Promise<void>((resolve, reject) => {
+      mediaSource.addEventListener("sourceopen", () => {
+        try {
+          const mime = [
+            'video/mp4; codecs="avc1.64001f, mp4a.40.2"',
+            'video/mp4; codecs="avc1.42E01E, mp4a.40.2"',
+            "video/mp4",
+          ].find(MediaSource.isTypeSupported);
+          if (!mime) throw new Error("This browser cannot decode the generated MP4 stream.");
+          const source = mediaSource.addSourceBuffer(mime);
+          source.mode = "sequence";
+          source.timestampOffset = startAt;
+          source.appendWindowStart = startAt;
+          source.appendWindowEnd = Math.max(startAt + 0.001, s.duration);
+          if (s.duration > 0) mediaSource.duration = s.duration;
+          const queue: ArrayBuffer[] = [];
+          let ended = false,
+            started = false;
+          const pump = () => {
+            if (source.updating) return;
+            const chunk = queue.shift();
+            if (chunk) source.appendBuffer(chunk);
+            else if (ended && mediaSource.readyState === "open") mediaSource.endOfStream();
+          };
+          source.addEventListener("updateend", () => {
+            if (epoch !== generatedEpoch.current) return;
+            if (!started && source.buffered.length) {
+              started = true;
+              internalSeek.current = true;
+              v.currentTime = startAt;
+              setTimeout(() => { internalSeek.current = false; }, 250);
+              if (resumePlayback) v.play().then(() => { setMessage("Playing"); resolve(); }).catch(reject);
+              else { setMessage("Ready"); resolve(); }
+            }
+            pump();
+          });
+          fetch(`${s.mediaUrl}?start=${startAt.toFixed(3)}`, {
+            credentials: "same-origin",
+            signal: generatedAbort.current?.signal,
+          }).then(async response => {
+            if (!response.ok || !response.body) throw new Error(`Stream returned ${response.status}`);
+            const reader = response.body.getReader();
+            for (;;) {
+              const part = await reader.read();
+              if (part.done) break;
+              queue.push(new Uint8Array(part.value).buffer as ArrayBuffer);
+              pump();
+            }
+            ended = true;
+            pump();
+          }).catch(error => {
+            if (error.name !== "AbortError") reject(error);
+          });
+        } catch (error) { reject(error); }
+      }, { once: true });
+    });
+  }
+  function seekGenerated(target: number, resumePlayback: boolean) {
+    const s = sessionRef.current;
+    if (!s) return;
+    report("PLAYING");
+    internalSeek.current = true;
+    attachGeneratedStream(s, target, resumePlayback)
+      .catch((e) => setMessage(e.message));
+  }
+  function seekTo(target: number) {
+    const v = video.current,
+      s = sessionRef.current;
+    if (!v || !s) return;
+    const bounded = Math.max(0, Math.min(target, s.duration || target));
+    setPosition(bounded);
+    if (s.decision.mode === "DIRECT_PLAY") v.currentTime = bounded;
+    else seekGenerated(bounded, !v.paused);
+  }
   async function start(version = choice, resume = true) {
     if (sessionRef.current) report("STOPPED");
     setMessage("Preparing direct play…");
@@ -974,12 +1066,15 @@ function Player({
       setMessage(reasonMessage(s.decision.reasons));
       return;
     }
-    setMessage("Loading…");
-    setTimeout(() => {
-      const v = video.current;
-      if (v && s.resumePosition > 0) v.currentTime = s.resumePosition;
-    }, 0);
+    setMessage(s.decision.mode === "DIRECT_PLAY" ? "Loading…" : "Preparing stream…");
   }
+  useEffect(() => {
+    const v=video.current;
+    if (!session||!v||!session.mediaUrl) return;
+    if (session.decision.mode==="DIRECT_PLAY") {
+      if (session.resumePosition>0) v.currentTime=session.resumePosition;
+    } else attachGeneratedStream(session,session.resumePosition).catch(e=>setMessage(e.message));
+  }, [session]);
   useEffect(() => {
     api.playbackVersions(type, id).then((x) => setVersions(x.versions));
     start("", true).catch((e) => setMessage(e.message));
@@ -1006,6 +1101,8 @@ function Player({
       clearInterval(timer);
       removeEventListener("keydown", keys);
       report("STOPPED");
+      generatedAbort.current?.abort();
+      if (generatedURL.current) URL.revokeObjectURL(generatedURL.current);
       if (video.current) {
         video.current.pause();
         video.current.removeAttribute("src");
@@ -1025,17 +1122,34 @@ function Player({
       {session?.decision.mode !== "UNSUPPORTED" && session?.mediaUrl ? (
         <video
           ref={video}
-          src={session.mediaUrl}
+          src={session.decision.mode === "DIRECT_PLAY" ? session.mediaUrl : undefined}
           controls
           autoPlay
           playsInline
-          onPlaying={() => setMessage("Playing")}
+          onPlaying={() => {
+            setPlaying(true);
+            setMessage("Playing");
+          }}
+          onTimeUpdate={() => {
+            setPosition(video.current?.currentTime || 0);
+            report("PLAYING");
+          }}
           onWaiting={() => setMessage("Buffering…")}
           onPause={() => {
+            setPlaying(false);
             setMessage("Paused");
             report("PAUSED");
           }}
-          onSeeked={() => report(video.current?.paused ? "PAUSED" : "PLAYING")}
+          onSeeking={() => {
+            const v=video.current,s=sessionRef.current;
+            if (!v||!s||s.decision.mode==="DIRECT_PLAY"||internalSeek.current) return;
+            const target=v.currentTime,resumePlayback=!v.paused;
+            seekGenerated(target,resumePlayback);
+          }}
+          onSeeked={() => {
+            internalSeek.current = false;
+            report(video.current?.paused ? "PAUSED" : "PLAYING");
+          }}
           onEnded={() => {
             setMessage("Completed");
             report("COMPLETED");
@@ -1074,6 +1188,10 @@ function Player({
           </select>
         </label>
         <button onClick={() => start(choice, true)}>Play selection</button>
+        <button onClick={()=>{const v=video.current;if(v){if(v.paused)v.play().catch(e=>setMessage(e.message));else v.pause()}}}>{playing?"Pause":"Play"}</button>
+        <button onClick={()=>seekTo(position-10)}>−10s</button>
+        <button onClick={()=>seekTo(position+10)}>+10s</button>
+        <label>Playback position<input aria-label="Playback position" type="range" min="0" max={Math.max(1,session?.duration||1)} step="0.1" value={Math.min(position,session?.duration||position)} onChange={e=>seekTo(Number(e.target.value))} /></label>
         <label>Audio<select value={audio} onChange={e=>setAudio(e.target.value)}><option value="">Default</option>{(versions.find(v=>v.id===choice)||session?.selectedVersion)?.audioTracks?.map(t=><option key={t.id} value={t.id}>{t.language||"Unknown"} · {t.codec.toUpperCase()} {t.channels?`· ${t.channels}ch`:""}{t.commentary?" · Commentary":""}</option>)}</select></label>
         <label>Subtitles<select value={subtitle} onChange={e=>setSubtitle(e.target.value)}><option value="">Off</option>{(versions.find(v=>v.id===choice)||session?.selectedVersion)?.subtitleTracks?.filter(t=>t.usable).map(t=><option key={t.id} value={t.id}>{t.language||t.title||"Subtitle"} · {t.codec.toUpperCase()}</option>)}</select></label>
         {session && session.resumePosition > 0 && (
