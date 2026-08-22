@@ -41,6 +41,7 @@ func fixture(t *testing.T) (*Service, func(), string, string) {
 	exec("INSERT INTO sessions(id,user_id,device_id,refresh_token_hash,expires_at,created_at,last_activity_at,token_family_id) VALUES('s1','u1','d1','x',?,?,?,'f')", stamp(now.Add(time.Hour)), n, n)
 	exec("INSERT INTO sessions(id,user_id,device_id,refresh_token_hash,expires_at,created_at,last_activity_at,token_family_id) VALUES('s2','u2','d2','y',?,?,?,'g')", stamp(now.Add(time.Hour)), n, n)
 	exec("INSERT INTO libraries(id,name,type,created_at,updated_at) VALUES('l','Movies','MOVIES',?,?)", n, n)
+	exec("INSERT INTO library_access_grants(user_id,library_id,permission,granted_by,created_at) VALUES('u1','l','VIEW','u1',?),('u1','l','PLAY','u1',?),('u2','l','VIEW','u1',?),('u2','l','PLAY','u1',?)", n, n, n, n)
 	exec("INSERT INTO library_sources(id,library_id,configured_path,normalized_path,created_at) VALUES('src','l',?,?,?)", root, root, n)
 	exec("INSERT INTO media_files(id,source_id,relative_path,file_name,base_name,extension,parent_path,size_bytes,modified_at_ns,availability,probe_status,container_format,duration_seconds,bitrate,resolution_class,hdr_class,created_at,updated_at) VALUES('f','src','movie.mp4','movie.mp4','movie','.mp4','',?,?, 'AVAILABLE','OK','mov,mp4',100,1000,'1080p','SDR',?,?)", st.Size(), st.ModTime().UnixNano(), n, n)
 	exec("INSERT INTO media_streams(id,media_file_id,stream_index,stream_type,codec,width,height,is_default,is_forced,hearing_impaired,commentary) VALUES('v','f',0,'video','h264',1920,1080,1,0,0,0)")

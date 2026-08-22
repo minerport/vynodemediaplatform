@@ -12,11 +12,13 @@ import (
 	"github.com/vynode/media/server/internal/metadata"
 	"github.com/vynode/media/server/internal/observability"
 	"github.com/vynode/media/server/internal/playback"
+	"github.com/vynode/media/server/internal/sharing"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"strings"
 	"time"
 )
 
@@ -42,6 +44,7 @@ type Handler struct {
 	intelligence  *intelligence.Service
 	curation      *curation.Service
 	observability *observability.Service
+	sharing       *sharing.Service
 	allowedOrigin string
 }
 type errorResponse struct {
@@ -63,6 +66,8 @@ func NewHandler(logger *slog.Logger, readiness Readiness, info SystemInfo, authS
 			h.curation = x
 		case *observability.Service:
 			h.observability = x
+		case *sharing.Service:
+			h.sharing = x
 		}
 	}
 	mux := http.NewServeMux()
@@ -90,6 +95,9 @@ func NewHandler(logger *slog.Logger, readiness Readiness, info SystemInfo, authS
 	}
 	if h.observability != nil {
 		h.observabilityRoutes(mux)
+	}
+	if h.sharing != nil {
+		h.sharingRoutes(mux)
 	}
 	if info.WebDir != "" {
 		mux.Handle("/", spaHandler(info.WebDir))
@@ -170,7 +178,11 @@ func requestLog(logger *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
 		next.ServeHTTP(w, r)
-		logger.Info("http request", "request_id", RequestID(r.Context()), "method", r.Method, "path", r.URL.Path, "duration_ms", time.Since(started).Milliseconds())
+		path := r.URL.Path
+		if strings.HasPrefix(path, "/invite/") {
+			path = "/invite/[redacted]"
+		}
+		logger.Info("http request", "request_id", RequestID(r.Context()), "method", r.Method, "path", path, "duration_ms", time.Since(started).Milliseconds())
 	})
 }
 func recoverer(logger *slog.Logger, next http.Handler) http.Handler {

@@ -24,6 +24,10 @@ export type Session = {
   lastActivityAt: string;
   current: boolean;
 };
+export type LibraryGrant={libraryId:string;libraryName?:string;permissions:("VIEW"|"PLAY")[]};
+export type Invitation={id:string;identifier?:string;role:"ADMIN"|"USER";status:string;createdBy:string;createdAt:string;expiresAt:string;acceptedAt?:string;libraries:LibraryGrant[]};
+export type PairingRequest={id:string;code?:string;challenge?:string;status:string;deviceName:string;clientName:string;clientVersion?:string;platform:string;platformVersion?:string;requestedAt:string;expiresAt:string};
+export type RemoteSettings={discoveryEnabled:boolean;discoveryStatus:string;discoveryLastError?:string;portMappingEnabled:boolean;portMappingProtocol?:string;portMappingStatus:string;portMappingExternalPort?:number;portMappingLeaseExpiresAt?:string;portMappingLastError?:string;reverseProxyEnabled:boolean;insecureRemoteAllowed:boolean;manualRemoteUrl?:string;manualStatus:string;trustedProxyCidrs:string[];localNetworkCidrs:string[];updatedAt:string};
 export type AuditEvent = {
   id: number;
   event: string;
@@ -445,6 +449,19 @@ export const api = {
       body: JSON.stringify({ currentPassword, newPassword }),
     }),
   users: () => call<{ users: User[] }>("/api/v1/admin/users"),
+  invitations:()=>call<{invitations:Invitation[]}>("/api/v1/admin/invitations"),
+  createInvitation:(body:unknown)=>call<{invitation:Invitation;invitePath:string;shownOnce:boolean}>("/api/v1/admin/invitations",{method:"POST",body:JSON.stringify(body)}),
+  revokeInvitation:(id:string)=>call<void>(`/api/v1/admin/invitations/${id}`,{method:"DELETE"}),
+  userGrants:(id:string)=>call<{grants:LibraryGrant[]}>(`/api/v1/admin/users/${id}/library-access`),
+  setUserGrants:(id:string,grants:LibraryGrant[])=>call<void>(`/api/v1/admin/users/${id}/library-access`,{method:"PUT",body:JSON.stringify({grants})}),
+  inspectInvitation:(token:string)=>raw<{serverName:string;invitation:Invitation}>(`/api/v1/invitations/inspect?token=${encodeURIComponent(token)}`),
+  acceptInvitation:(body:unknown)=>raw<{accessToken:string;user:User}>("/api/v1/invitations/accept",{method:"POST",body:JSON.stringify(body)}).then(accept),
+  createPairing:(body:unknown)=>raw<PairingRequest>("/api/v1/pairing/requests",{method:"POST",headers:{"Content-Type":"application/json","X-VyNode-Client":"native"},body:JSON.stringify(body)}),
+  lookupPairing:(code:string)=>call<PairingRequest>("/api/v1/account/pairing/lookup",{method:"POST",body:JSON.stringify({code})}),
+  approvePairing:(id:string)=>call<void>(`/api/v1/account/pairing/${id}/approve`,{method:"POST"}),
+  denyPairing:(id:string)=>call<void>(`/api/v1/account/pairing/${id}/deny`,{method:"POST"}),
+  remoteAccess:()=>call<RemoteSettings>("/api/v1/admin/remote-access"),
+  saveRemoteAccess:(body:RemoteSettings)=>call<RemoteSettings>("/api/v1/admin/remote-access",{method:"PUT",body:JSON.stringify(body)}),
   createUser: (body: unknown) =>
     call<User>("/api/v1/admin/users", {
       method: "POST",

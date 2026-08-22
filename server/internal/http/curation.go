@@ -48,6 +48,18 @@ func (h *Handler) curationRoutes(m *http.ServeMux) {
 	m.HandleFunc("PUT /api/v1/account/home-rows/order", h.require(self, h.reorderHome))
 }
 func admin(p auth.Principal) bool { return p.Role == auth.RoleOwner || p.Role == auth.RoleAdmin }
+func (h *Handler) accessibleItems(r *http.Request, p auth.Principal, items []curation.Item) []curation.Item {
+	if p.Role != auth.RoleUser {
+		return items
+	}
+	out := items[:0]
+	for _, x := range items {
+		if h.sharing.HasLogical(r.Context(), p, x.Type, x.ID, "VIEW") {
+			out = append(out, x)
+		}
+	}
+	return out
+}
 func (h *Handler) curationError(w http.ResponseWriter, r *http.Request, e error) {
 	switch {
 	case errors.Is(e, curation.ErrValidation):
@@ -66,12 +78,27 @@ func (h *Handler) collections(w http.ResponseWriter, r *http.Request, p auth.Pri
 		h.curationError(w, r, e)
 		return
 	}
+	if p.Role == auth.RoleUser {
+		out := x[:0]
+		for _, c := range x {
+			full, e := h.curation.Collection(r.Context(), p.UserID, c.ID)
+			if e == nil && len(h.accessibleItems(r, p, full.Items)) > 0 {
+				out = append(out, c)
+			}
+		}
+		x = out
+	}
 	writeJSON(w, 200, map[string]any{"collections": x})
 }
 func (h *Handler) collection(w http.ResponseWriter, r *http.Request, p auth.Principal) {
 	x, e := h.curation.Collection(r.Context(), p.UserID, r.PathValue("id"))
 	if e != nil {
 		h.curationError(w, r, e)
+		return
+	}
+	x.Items = h.accessibleItems(r, p, x.Items)
+	if p.Role == auth.RoleUser && len(x.Items) == 0 {
+		h.curationError(w, r, curation.ErrNotFound)
 		return
 	}
 	writeJSON(w, 200, x)
@@ -105,6 +132,12 @@ func (h *Handler) addCollectionItems(w http.ResponseWriter, r *http.Request, p a
 	if !decode(w, r, &x) {
 		return
 	}
+	for _, item := range x.Items {
+		if !h.sharing.HasLogical(r.Context(), p, item.Type, item.ID, "VIEW") {
+			h.curationError(w, r, curation.ErrNotFound)
+			return
+		}
+	}
 	if e := h.curation.AddCollectionItems(r.Context(), p.UserID, admin(p), r.PathValue("id"), x.Items); e != nil {
 		h.curationError(w, r, e)
 		return
@@ -135,12 +168,27 @@ func (h *Handler) smarts(w http.ResponseWriter, r *http.Request, p auth.Principa
 		h.curationError(w, r, e)
 		return
 	}
+	if p.Role == auth.RoleUser {
+		out := x[:0]
+		for _, c := range x {
+			full, e := h.curation.Smart(r.Context(), p.UserID, c.ID)
+			if e == nil && len(h.accessibleItems(r, p, full.Items)) > 0 {
+				out = append(out, c)
+			}
+		}
+		x = out
+	}
 	writeJSON(w, 200, map[string]any{"smartCollections": x})
 }
 func (h *Handler) smart(w http.ResponseWriter, r *http.Request, p auth.Principal) {
 	x, e := h.curation.Smart(r.Context(), p.UserID, r.PathValue("id"))
 	if e != nil {
 		h.curationError(w, r, e)
+		return
+	}
+	x.Items = h.accessibleItems(r, p, x.Items)
+	if p.Role == auth.RoleUser && len(x.Items) == 0 {
+		h.curationError(w, r, curation.ErrNotFound)
 		return
 	}
 	writeJSON(w, 200, x)
@@ -155,6 +203,7 @@ func (h *Handler) previewSmart(w http.ResponseWriter, r *http.Request, p auth.Pr
 		h.curationError(w, r, e)
 		return
 	}
+	items = h.accessibleItems(r, p, items)
 	writeJSON(w, 200, map[string]any{"count": len(items), "items": items})
 }
 func (h *Handler) saveSmart(w http.ResponseWriter, r *http.Request, p auth.Principal) {
@@ -195,6 +244,7 @@ func (h *Handler) playlist(w http.ResponseWriter, r *http.Request, p auth.Princi
 		h.curationError(w, r, e)
 		return
 	}
+	x.Items = h.accessibleItems(r, p, x.Items)
 	writeJSON(w, 200, x)
 }
 func (h *Handler) savePlaylist(w http.ResponseWriter, r *http.Request, p auth.Principal) {
@@ -222,6 +272,10 @@ func (h *Handler) deletePlaylist(w http.ResponseWriter, r *http.Request, p auth.
 func (h *Handler) addPlaylistItem(w http.ResponseWriter, r *http.Request, p auth.Principal) {
 	var x struct{ Type, ID string }
 	if !decode(w, r, &x) {
+		return
+	}
+	if !h.sharing.HasLogical(r.Context(), p, strings.ToUpper(x.Type), x.ID, "VIEW") {
+		h.curationError(w, r, curation.ErrNotFound)
 		return
 	}
 	item, e := h.curation.AddPlaylistItem(r.Context(), p.UserID, r.PathValue("id"), strings.ToUpper(x.Type), x.ID)
@@ -267,6 +321,7 @@ func (h *Handler) personal(w http.ResponseWriter, r *http.Request, p auth.Princi
 		h.curationError(w, r, e)
 		return
 	}
+	x = h.accessibleItems(r, p, x)
 	writeJSON(w, 200, map[string]any{"items": x})
 }
 func (h *Handler) togglePersonal(w http.ResponseWriter, r *http.Request, p auth.Principal) {
@@ -274,7 +329,12 @@ func (h *Handler) togglePersonal(w http.ResponseWriter, r *http.Request, p auth.
 	if strings.Contains(r.URL.Path, "favorites") {
 		kind = "FAVORITE"
 	}
-	e := h.curation.TogglePersonal(r.Context(), p.UserID, kind, strings.ToUpper(r.PathValue("type")), r.PathValue("itemId"), r.Method == "PUT")
+	itemType, itemID := strings.ToUpper(r.PathValue("type")), r.PathValue("itemId")
+	if r.Method == "PUT" && !h.sharing.HasLogical(r.Context(), p, itemType, itemID, "VIEW") {
+		h.curationError(w, r, curation.ErrNotFound)
+		return
+	}
+	e := h.curation.TogglePersonal(r.Context(), p.UserID, kind, itemType, itemID, r.Method == "PUT")
 	if e != nil {
 		h.curationError(w, r, e)
 		return
@@ -286,6 +346,9 @@ func (h *Handler) home(w http.ResponseWriter, r *http.Request, p auth.Principal)
 	if e != nil {
 		h.curationError(w, r, e)
 		return
+	}
+	for i := range x.Rows {
+		x.Rows[i].Items = h.accessibleItems(r, p, x.Rows[i].Items)
 	}
 	writeJSON(w, 200, x)
 }

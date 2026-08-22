@@ -38,41 +38,94 @@ func page(r *http.Request) (int, int) {
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 	return limit, offset
 }
-func (h *Handler) movies(w http.ResponseWriter, r *http.Request, _ auth.Principal) {
+func (h *Handler) movies(w http.ResponseWriter, r *http.Request, p auth.Principal) {
 	l, o := page(r)
 	v, e := h.metadata.Movies(r.Context(), r.URL.Query().Get("q"), l, o)
 	if e != nil {
 		h.metadataError(w, r, e)
 		return
 	}
+	if p.Role == auth.RoleUser {
+		filtered := v[:0]
+		for _, item := range v {
+			if h.sharing.HasLogical(r.Context(), p, "MOVIE", item.ID, "VIEW") {
+				filtered = append(filtered, item)
+			}
+		}
+		v = filtered
+	}
 	writeJSON(w, 200, map[string]any{"movies": v, "limit": l, "offset": o})
 }
-func (h *Handler) movie(w http.ResponseWriter, r *http.Request, _ auth.Principal) {
+func (h *Handler) movie(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+	if !h.sharing.HasLogical(r.Context(), p, "MOVIE", r.PathValue("id"), "VIEW") {
+		h.metadataError(w, r, metadata.ErrNotFound)
+		return
+	}
 	v, e := h.metadata.Movie(r.Context(), r.PathValue("id"))
 	if e != nil {
 		h.metadataError(w, r, e)
 		return
 	}
+	if p.Role == auth.RoleUser {
+		filtered := v.Versions[:0]
+		for _, version := range v.Versions {
+			if h.sharing.HasAssociation(r.Context(), p, version.ID, "VIEW") {
+				filtered = append(filtered, version)
+			}
+		}
+		v.Versions = filtered
+	}
 	writeJSON(w, 200, v)
 }
-func (h *Handler) shows(w http.ResponseWriter, r *http.Request, _ auth.Principal) {
+func (h *Handler) shows(w http.ResponseWriter, r *http.Request, p auth.Principal) {
 	l, o := page(r)
 	v, e := h.metadata.Shows(r.Context(), r.URL.Query().Get("q"), l, o)
 	if e != nil {
 		h.metadataError(w, r, e)
 		return
 	}
+	if p.Role == auth.RoleUser {
+		filtered := v[:0]
+		for _, item := range v {
+			if h.sharing.HasLogical(r.Context(), p, "SHOW", item.ID, "VIEW") {
+				filtered = append(filtered, item)
+			}
+		}
+		v = filtered
+	}
 	writeJSON(w, 200, map[string]any{"shows": v, "limit": l, "offset": o})
 }
-func (h *Handler) show(w http.ResponseWriter, r *http.Request, _ auth.Principal) {
+func (h *Handler) show(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+	if !h.sharing.HasLogical(r.Context(), p, "SHOW", r.PathValue("id"), "VIEW") {
+		h.metadataError(w, r, metadata.ErrNotFound)
+		return
+	}
 	v, e := h.metadata.Show(r.Context(), r.PathValue("id"))
 	if e != nil {
 		h.metadataError(w, r, e)
 		return
 	}
+	if p.Role == auth.RoleUser {
+		for si := range v.Seasons {
+			episodes := v.Seasons[si].Episodes[:0]
+			for _, episode := range v.Seasons[si].Episodes {
+				if h.sharing.HasLogical(r.Context(), p, "EPISODE", episode.ID, "VIEW") {
+					episodes = append(episodes, episode)
+				}
+			}
+			v.Seasons[si].Episodes = episodes
+		}
+		seasons := v.Seasons[:0]
+		for _, season := range v.Seasons {
+			if len(season.Episodes) > 0 {
+				seasons = append(seasons, season)
+			}
+		}
+		v.Seasons = seasons
+	}
 	writeJSON(w, 200, v)
 }
-func (h *Handler) localSearch(w http.ResponseWriter, r *http.Request, _ auth.Principal) {
+func (h *Handler) localSearch(w http.ResponseWriter, r *http.Request, p auth.Principal) {
 	q := r.URL.Query().Get("q")
 	m, e := h.metadata.Movies(r.Context(), q, 25, 0)
 	if e != nil {
@@ -83,6 +136,22 @@ func (h *Handler) localSearch(w http.ResponseWriter, r *http.Request, _ auth.Pri
 	if e != nil {
 		h.metadataError(w, r, e)
 		return
+	}
+	if p.Role == auth.RoleUser {
+		fm := m[:0]
+		for _, item := range m {
+			if h.sharing.HasLogical(r.Context(), p, "MOVIE", item.ID, "VIEW") {
+				fm = append(fm, item)
+			}
+		}
+		m = fm
+		fs := s[:0]
+		for _, item := range s {
+			if h.sharing.HasLogical(r.Context(), p, "SHOW", item.ID, "VIEW") {
+				fs = append(fs, item)
+			}
+		}
+		s = fs
 	}
 	writeJSON(w, 200, map[string]any{"movies": m, "shows": s})
 }
@@ -210,7 +279,11 @@ func (h *Handler) movieArtwork(w http.ResponseWriter, r *http.Request, p auth.Pr
 func (h *Handler) showArtwork(w http.ResponseWriter, r *http.Request, p auth.Principal) {
 	h.artworkList(w, r, p, "SHOW")
 }
-func (h *Handler) artworkList(w http.ResponseWriter, r *http.Request, _ auth.Principal, kind string) {
+func (h *Handler) artworkList(w http.ResponseWriter, r *http.Request, p auth.Principal, kind string) {
+	if !h.sharing.HasLogical(r.Context(), p, kind, r.PathValue("id"), "VIEW") {
+		h.metadataError(w, r, metadata.ErrNotFound)
+		return
+	}
 	v, e := h.metadata.Artwork(r.Context(), kind, r.PathValue("id"))
 	if e != nil {
 		h.metadataError(w, r, e)
@@ -232,7 +305,11 @@ func (h *Handler) artworkSelect(w http.ResponseWriter, r *http.Request, p auth.P
 	h.metadata.Audit(r.Context(), p.UserID, "ARTWORK_SELECTION_CHANGED", r.PathValue("artworkId"), RequestID(r.Context()))
 	w.WriteHeader(204)
 }
-func (h *Handler) artworkContent(w http.ResponseWriter, r *http.Request, _ auth.Principal) {
+func (h *Handler) artworkContent(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+	if !h.sharing.HasArtwork(r.Context(), p, r.PathValue("artworkId")) {
+		h.metadataError(w, r, metadata.ErrNotFound)
+		return
+	}
 	path, mime, etag, e := h.metadata.ArtworkFile(r.Context(), r.PathValue("artworkId"))
 	if e != nil {
 		h.metadataError(w, r, e)

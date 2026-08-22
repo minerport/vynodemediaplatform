@@ -70,6 +70,13 @@ func remoteIP(r *http.Request) string {
 	}
 	return r.RemoteAddr
 }
+func (h *Handler) connection(r *http.Request) (string, bool, bool) {
+	if h.sharing == nil {
+		return remoteIP(r), r.TLS != nil, false
+	}
+	c := h.sharing.ResolveConnection(r.Context(), r.RemoteAddr, r.Header.Get("X-Forwarded-For"), r.Header.Get("X-Forwarded-Proto"), r.TLS != nil)
+	return c.Address, c.Secure, c.Local
+}
 func (h *Handler) setupStatus(w http.ResponseWriter, r *http.Request) {
 	required, err := h.auth.SetupRequired(r.Context())
 	if err != nil {
@@ -79,7 +86,8 @@ func (h *Handler) setupStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]bool{"setupRequired": required})
 }
 func (h *Handler) setupOwner(w http.ResponseWriter, r *http.Request) {
-	if !authLimiter.allow("setup:" + remoteIP(r)) {
+	address, _, _ := h.connection(r)
+	if !authLimiter.allow("setup:" + address) {
 		writeError(w, r, 429, "RATE_LIMITED", "Too many attempts. Try again shortly.")
 		return
 	}
@@ -90,7 +98,7 @@ func (h *Handler) setupOwner(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	tokens, err := h.auth.Bootstrap(r.Context(), in.Username, in.DisplayName, in.Password, in.ServerName, RequestID(r.Context()), remoteIP(r), in.Device)
+	tokens, err := h.auth.Bootstrap(r.Context(), in.Username, in.DisplayName, in.Password, in.ServerName, RequestID(r.Context()), address, in.Device)
 	if err != nil {
 		h.authError(w, r, err)
 		return
@@ -98,7 +106,8 @@ func (h *Handler) setupOwner(w http.ResponseWriter, r *http.Request) {
 	h.sendTokens(w, r, tokens, http.StatusCreated)
 }
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
-	if !authLimiter.allow("login:" + remoteIP(r)) {
+	address, _, _ := h.connection(r)
+	if !authLimiter.allow("login:" + address) {
 		writeError(w, r, 429, "RATE_LIMITED", "Too many attempts. Try again shortly.")
 		return
 	}
@@ -109,7 +118,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	tokens, err := h.auth.Login(r.Context(), in.Username, in.Password, RequestID(r.Context()), remoteIP(r), in.Device)
+	tokens, err := h.auth.Login(r.Context(), in.Username, in.Password, RequestID(r.Context()), address, in.Device)
 	if err != nil {
 		h.authError(w, r, err)
 		return
@@ -117,7 +126,8 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	h.sendTokens(w, r, tokens, 200)
 }
 func (h *Handler) refresh(w http.ResponseWriter, r *http.Request) {
-	if !authLimiter.allow("refresh:" + remoteIP(r)) {
+	address, _, _ := h.connection(r)
+	if !authLimiter.allow("refresh:" + address) {
 		writeError(w, r, 429, "RATE_LIMITED", "Too many attempts. Try again shortly.")
 		return
 	}
@@ -147,7 +157,7 @@ func (h *Handler) sendTokens(w http.ResponseWriter, r *http.Request, t auth.Toke
 		writeJSON(w, status, t)
 		return
 	}
-	secure := r.TLS != nil
+	_, secure, _ := h.connection(r)
 	http.SetCookie(w, &http.Cookie{Name: "vynode_refresh", Value: t.RefreshToken, Path: "/api/v1/auth", HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode, MaxAge: int(h.auth.RefreshTTL.Seconds())})
 	t.RefreshToken = ""
 	writeJSON(w, status, t)

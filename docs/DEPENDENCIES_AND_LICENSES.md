@@ -14,6 +14,8 @@ TMDb is an optional external metadata service accessed through its documented AP
 | modernc SQLite transitive Go modules | SQLite runtime portability (`libc`, `memory`, `mathutil`, Go `x/sys`, `x/exp`, UUID, formatting helpers) | BSD-3-Clause or MIT; exact modules/versions in `go.mod` |
 | React / React DOM | Web UI | MIT |
 | hls.js | Authenticated HLS playback in MSE-capable browsers | Apache-2.0 |
+| github.com/hashicorp/mdns | Local `_vynode-media._tcp` DNS-SD advertisement | MIT |
+| github.com/huin/goupnp | Opt-in UPnP IGD TCP port mapping | BSD-2-Clause |
 | Vite and @vitejs/plugin-react | Web tooling | MIT |
 | TypeScript | Type checking | Apache-2.0 |
 | Vitest | Web unit tests | MIT |
@@ -30,3 +32,7 @@ Jellyfin, or Emby source, assets, protocols, text, or branding are included.
 # Phase 10 dependency note
 
 Phase 10 adds no third-party runtime or chart dependency. Metrics, HMAC signing, URL/DNS policy, asynchronous delivery, and compact dashboard visualizations use the Go and browser standard libraries.
+
+# Phase 11 dependency note
+
+Phase 11 adds HashiCorp mDNS for local DNS-SD advertisement and huin/goupnp for opt-in UPnP IGD mapping. Both run locally; neither introduces a hosted service or cloud dependency. NAT-PMP and PCP are deliberately not claimed by this checkpoint.

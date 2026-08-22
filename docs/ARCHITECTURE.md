@@ -91,3 +91,7 @@ capability contracts rather than persistence models.
 ## Curation and Home
 
 Phase 9 keeps manual collections, smart collections, private playlists, watchlists, favorites, and Home layouts as distinct aggregates. Home is a composed API backed by modular typed row resolvers; the web client does not hard-code row data sources.
+
+## Sharing and connection boundaries
+
+Phase 11 keeps account roles, library grants, invitations, pairing requests, devices, sessions, configured endpoints, and future cloud registration as separate domains. USER media visibility derives from accessible logical-library membership. Pairing is only a bootstrap into the existing rotating, revocable session model. Configured endpoints are persisted policy and are never inferred from an untrusted Host header.

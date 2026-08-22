@@ -280,6 +280,35 @@ paths:
     post: { operationId: testNotificationDestination, summary: Requires observability.manage; queues synthetic event through normal delivery pipeline, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '202': { description: Test delivery queued }, '400': { $ref: '#/components/responses/BadRequest' } } }
   /api/v1/admin/notifications/deliveries:
     get: { operationId: listNotificationDeliveries, summary: Requires observability.view; contains no response bodies or secrets, security: [{ bearerAuth: [] }], responses: { '200': { description: Bounded delivery history }, '403': { description: Denied } } }
+  /api/v1/connection-info:
+    get: { operationId: getConnectionInfo, summary: Safe bootstrap identity and capability document; contains no credentials, responses: { '200': { description: Stable server identity and supported connection mechanisms }, '400': { $ref: '#/components/responses/BadRequest' } } }
+  /api/v1/invitations/inspect:
+    get: { operationId: inspectInvitation, summary: "Unauthenticated one-time onboarding preview; token is never logged or returned", parameters: [{ name: token, in: query, required: true, schema: { type: string } }], responses: { '200': { description: "Server name, role and granted libraries" }, '410': { description: "Expired, accepted, revoked or unknown invitation" } } }
+  /api/v1/invitations/accept:
+    post: { operationId: acceptInvitation, summary: "Atomically consumes invitation, creates local Argon2id account and normal device session", responses: { '201': { description: Account and session created }, '410': { description: Invitation unavailable } } }
+  /api/v1/admin/invitations:
+    get: { operationId: listInvitations, summary: Requires users.manage; raw tokens are never returned, security: [{ bearerAuth: [] }], responses: { '200': { description: Invitation history }, '403': { description: Denied } } }
+    post: { operationId: createInvitation, summary: Requires users.manage; ADMIN invitations require OWNER; raw link shown once, security: [{ bearerAuth: [] }], responses: { '201': { description: Invitation plus one-time share path }, '403': { description: Denied } } }
+  /api/v1/admin/invitations/{id}:
+    delete: { operationId: revokeInvitation, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '204': { description: Pending invitation revoked }, '410': { description: Invitation unavailable } } }
+  /api/v1/admin/users/{id}/library-access:
+    get: { operationId: getUserLibraryAccess, summary: Requires users.manage; distinct from account role, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: Explicit VIEW and PLAY grants }, '403': { description: Denied } } }
+    put: { operationId: replaceUserLibraryAccess, summary: Replaces explicit grants and promptly stops playback no longer authorized, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '204': { description: Grants replaced }, '400': { $ref: '#/components/responses/BadRequest' } } }
+  /api/v1/pairing/requests:
+    post: { operationId: createPairingRequest, summary: Creates seven-minute code plus separate possession challenge, responses: { '201': { description: Pairing bootstrap material }, '429': { description: Rate limited } } }
+  /api/v1/pairing/requests/{id}:
+    get: { operationId: getPairingStatus, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: Bounded polling status without user identity }, '410': { description: Pairing unavailable } } }
+  /api/v1/pairing/requests/{id}/exchange:
+    post: { operationId: exchangePairingChallenge, summary: Possession proof exchanges approved pairing for normal rotating native credentials, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: Normal access and refresh credentials }, '410': { description: Pairing unavailable } } }
+  /api/v1/account/pairing/lookup:
+    post: { operationId: lookupPairingCode, security: [{ bearerAuth: [] }], responses: { '200': { description: Requesting device metadata }, '429': { description: Rate limited } } }
+  /api/v1/account/pairing/{id}/approve:
+    post: { operationId: approvePairing, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '204': { description: Pairing approved to current user }, '410': { description: Pairing unavailable } } }
+  /api/v1/account/pairing/{id}/deny:
+    post: { operationId: denyPairing, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '204': { description: Pairing denied }, '410': { description: Pairing unavailable } } }
+  /api/v1/admin/remote-access:
+    get: { operationId: getRemoteAccess, summary: OWNER only; reports configuration without claiming external reachability, security: [{ bearerAuth: [] }], responses: { '200': { description: Remote access diagnostics }, '403': { description: Denied } } }
+    put: { operationId: updateRemoteAccess, summary: "OWNER only; validates URLs, IPv4/IPv6 CIDRs, explicit insecure opt-in and proxy trust", security: [{ bearerAuth: [] }], responses: { '200': { description: Updated diagnostics }, '400': { $ref: '#/components/responses/BadRequest' } } }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }

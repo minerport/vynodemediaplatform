@@ -20,3 +20,5 @@ Phase 5 provides Direct Stream, audio-only transcoding, text subtitles, supervis
 
 Every gate requires tests, builds, ADR updates, stated limitations, and no unrelated
 refactors. Only the immediately authorized phase begins.
+
+Phase 11 introduces explicit household sharing, offline one-time invitations, secure native-device pairing, manual remote endpoints, trusted-proxy policy, runtime mDNS advertisement, and opt-in UPnP IGD lease management. NAT-PMP, PCP, built-in TLS, and externally verified reachability remain explicit future work rather than simulated capability.

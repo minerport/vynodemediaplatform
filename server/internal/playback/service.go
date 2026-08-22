@@ -77,6 +77,27 @@ func (s *Service) Start(ctx context.Context, userID, authSessionID string, in St
 	if err != nil {
 		return Session{}, err
 	}
+	var role string
+	if err = s.db.QueryRowContext(ctx, "SELECT role FROM users WHERE id=?", userID).Scan(&role); err != nil {
+		return Session{}, ErrForbidden
+	}
+	if role == "USER" {
+		allowed := versions[:0]
+		for _, version := range versions {
+			var n int
+			err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM media_associations a JOIN media_files f ON f.id=a.media_file_id JOIN library_sources src ON src.id=f.source_id JOIN library_access_grants g ON g.library_id=src.library_id AND g.user_id=? AND g.permission='PLAY' WHERE a.id=? AND f.availability='AVAILABLE'`, userID, version.ID).Scan(&n)
+			if err != nil {
+				return Session{}, err
+			}
+			if n > 0 {
+				allowed = append(allowed, version)
+			}
+		}
+		versions = allowed
+		if len(versions) == 0 {
+			return Session{}, ErrForbidden
+		}
+	}
 	prefs, err := s.Preferences(ctx, userID)
 	if err != nil {
 		return Session{}, err

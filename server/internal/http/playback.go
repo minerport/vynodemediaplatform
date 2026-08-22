@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -60,7 +59,11 @@ func (h *Handler) setPlaybackPreferences(w http.ResponseWriter, r *http.Request,
 	}
 	writeJSON(w, 200, v)
 }
-func (h *Handler) playbackMarkers(w http.ResponseWriter, r *http.Request, _ auth.Principal) {
+func (h *Handler) playbackMarkers(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+	if !h.sharing.HasLogical(r.Context(), p, strings.ToUpper(r.PathValue("logicalType")), r.PathValue("logicalId"), "VIEW") {
+		h.playbackError(w, r, playback.ErrNotFound)
+		return
+	}
 	v, e := h.playback.Markers(r.Context(), strings.ToUpper(r.PathValue("logicalType")), r.PathValue("logicalId"))
 	if e != nil {
 		h.playbackError(w, r, e)
@@ -105,6 +108,10 @@ func (h *Handler) deleteMarker(w http.ResponseWriter, r *http.Request, p auth.Pr
 	w.WriteHeader(204)
 }
 func (h *Handler) dismissContinueWatching(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+	if !h.sharing.HasLogical(r.Context(), p, strings.ToUpper(r.PathValue("logicalType")), r.PathValue("logicalId"), "VIEW") {
+		h.playbackError(w, r, playback.ErrNotFound)
+		return
+	}
 	if e := h.playback.DismissContinue(r.Context(), p.UserID, strings.ToUpper(r.PathValue("logicalType")), r.PathValue("logicalId")); e != nil {
 		h.playbackError(w, r, e)
 		return
@@ -112,6 +119,10 @@ func (h *Handler) dismissContinueWatching(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(204)
 }
 func (h *Handler) startOver(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+	if !h.sharing.HasLogical(r.Context(), p, strings.ToUpper(r.PathValue("logicalType")), r.PathValue("logicalId"), "VIEW") {
+		h.playbackError(w, r, playback.ErrNotFound)
+		return
+	}
 	if e := h.playback.ResetProgress(r.Context(), p.UserID, strings.ToUpper(r.PathValue("logicalType")), r.PathValue("logicalId")); e != nil {
 		h.playbackError(w, r, e)
 		return
@@ -124,10 +135,13 @@ func (h *Handler) startPlayback(w http.ResponseWriter, r *http.Request, p auth.P
 	if !decode(w, r, &in) {
 		return
 	}
+	if !h.sharing.HasLogical(r.Context(), p, in.LogicalType, in.LogicalID, "PLAY") {
+		h.playbackError(w, r, playback.ErrNotFound)
+		return
+	}
 	in.Network = playback.NetworkRemote
-	host, _, _ := net.SplitHostPort(r.RemoteAddr)
-	ip := net.ParseIP(host)
-	if ip != nil && (ip.IsLoopback() || ip.IsPrivate()) {
+	_, _, local := h.connection(r)
+	if local {
 		in.Network = playback.NetworkLocal
 	}
 	out, err := h.playback.Start(r.Context(), p.UserID, p.SessionID, in)
@@ -138,7 +152,7 @@ func (h *Handler) startPlayback(w http.ResponseWriter, r *http.Request, p auth.P
 	if out.MediaURL != "" {
 		parts := strings.SplitN(out.MediaURL, "?token=", 2)
 		if len(parts) == 2 {
-			secure := r.TLS != nil
+			_, secure, _ := h.connection(r)
 			http.SetCookie(w, &http.Cookie{Name: mediaCookie(out.ID), Value: parts[1], Path: "/api/v1/playback/sessions/" + out.ID + "/", HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode, MaxAge: int((4 * time.Hour).Seconds())})
 			out.MediaURL = parts[0]
 		}
@@ -146,7 +160,7 @@ func (h *Handler) startPlayback(w http.ResponseWriter, r *http.Request, p auth.P
 	if out.HLSURL != "" {
 		parts := strings.SplitN(out.HLSURL, "?token=", 2)
 		if len(parts) == 2 {
-			secure := r.TLS != nil
+			_, secure, _ := h.connection(r)
 			http.SetCookie(w, &http.Cookie{Name: mediaCookie(out.ID), Value: parts[1], Path: "/api/v1/playback/sessions/" + out.ID + "/", HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode, MaxAge: int((4 * time.Hour).Seconds())})
 			out.HLSURL = parts[0]
 		}
@@ -172,15 +186,32 @@ func (h *Handler) stopPlayback(w http.ResponseWriter, r *http.Request, p auth.Pr
 	}
 	w.WriteHeader(204)
 }
-func (h *Handler) playbackVersions(w http.ResponseWriter, r *http.Request, _ auth.Principal) {
+func (h *Handler) playbackVersions(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+	if !h.sharing.HasLogical(r.Context(), p, strings.ToUpper(r.PathValue("logicalType")), r.PathValue("logicalId"), "VIEW") {
+		h.playbackError(w, r, playback.ErrNotFound)
+		return
+	}
 	v, err := h.playback.Versions(r.Context(), strings.ToUpper(r.PathValue("logicalType")), r.PathValue("logicalId"))
 	if err != nil {
 		h.playbackError(w, r, err)
 		return
 	}
+	if p.Role == auth.RoleUser {
+		filtered := v[:0]
+		for _, version := range v {
+			if h.sharing.HasAssociation(r.Context(), p, version.ID, "VIEW") {
+				filtered = append(filtered, version)
+			}
+		}
+		v = filtered
+	}
 	writeJSON(w, 200, map[string]any{"versions": v})
 }
 func (h *Handler) playbackProgress(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+	if !h.sharing.HasLogical(r.Context(), p, strings.ToUpper(r.PathValue("logicalType")), r.PathValue("logicalId"), "VIEW") {
+		h.playbackError(w, r, playback.ErrNotFound)
+		return
+	}
 	v, err := h.playback.Progress(r.Context(), p.UserID, strings.ToUpper(r.PathValue("logicalType")), r.PathValue("logicalId"))
 	if err != nil {
 		h.playbackError(w, r, err)
@@ -189,6 +220,10 @@ func (h *Handler) playbackProgress(w http.ResponseWriter, r *http.Request, p aut
 	writeJSON(w, 200, v)
 }
 func (h *Handler) markWatched(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+	if !h.sharing.HasLogical(r.Context(), p, strings.ToUpper(r.PathValue("logicalType")), r.PathValue("logicalId"), "VIEW") {
+		h.playbackError(w, r, playback.ErrNotFound)
+		return
+	}
 	var in struct {
 		Watched bool `json:"watched"`
 	}
@@ -362,6 +397,15 @@ func (h *Handler) continueWatching(w http.ResponseWriter, r *http.Request, p aut
 	if e != nil {
 		h.playbackError(w, r, e)
 		return
+	}
+	if p.Role == auth.RoleUser {
+		out := v[:0]
+		for _, item := range v {
+			if h.sharing.HasLogical(r.Context(), p, item.LogicalType, item.LogicalID, "VIEW") {
+				out = append(out, item)
+			}
+		}
+		v = out
 	}
 	writeJSON(w, 200, map[string]any{"items": v})
 }

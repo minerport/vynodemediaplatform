@@ -10,7 +10,7 @@ import (
 )
 
 func (h *Handler) mediaRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/v1/libraries", h.require(auth.CapLibrariesView, h.listLibraries))
+	mux.HandleFunc("GET /api/v1/libraries", h.protected(h.listLibraries))
 	mux.HandleFunc("POST /api/v1/libraries", h.require(auth.CapLibrariesManage, h.createLibrary))
 	mux.HandleFunc("GET /api/v1/libraries/{libraryId}", h.require(auth.CapLibrariesView, h.getLibrary))
 	mux.HandleFunc("PATCH /api/v1/libraries/{libraryId}", h.require(auth.CapLibrariesManage, h.updateLibrary))
@@ -26,11 +26,20 @@ func (h *Handler) mediaRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/admin/system/media-probe", h.require(auth.CapSecurityView, h.probeCapability))
 }
 
-func (h *Handler) listLibraries(w http.ResponseWriter, r *http.Request, _ auth.Principal) {
+func (h *Handler) listLibraries(w http.ResponseWriter, r *http.Request, p auth.Principal) {
 	x, e := h.media.ListLibraries(r.Context())
 	if e != nil {
 		h.mediaError(w, r, e)
 		return
+	}
+	if p.Role == auth.RoleUser {
+		filtered := x[:0]
+		for _, library := range x {
+			if h.sharing.Has(r.Context(), p, library.ID, "VIEW") {
+				filtered = append(filtered, library)
+			}
+		}
+		x = filtered
 	}
 	writeJSON(w, 200, map[string]any{"libraries": x})
 }
