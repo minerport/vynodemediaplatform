@@ -4,6 +4,8 @@ Logical metadata and cached artwork use paths below the configured application-d
 
 Phase 3 was runtime-validated in the Linux Docker image and cross-built for Windows. Native Windows Phase 3 execution remains unavailable in the validation environment because a host Go toolchain is not installed; this does not alter the already validated read-only Windows scanning design.
 
+Direct Play uses the same Go HTTP delivery implementation in native and container builds. Unraid uses the identical OCI image; mounted media should remain read-only, and host disk/network throughput directly bounds original-byte delivery. Phase 4 Windows validation is cross-build-only unless noted in its completion report.
+
 **SUPPORTED** is implemented and validated; **PLANNED** has an explicit roadmap;
 **FUTURE** is intentionally deferred and subject to platform evaluation.
 

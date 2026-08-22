@@ -10,6 +10,8 @@ The socket peer address drives throttling and audit context. `Forwarded`, `X-For
 
 Responses set CSP, frame denial, MIME sniffing protection, no-referrer policy, restricted browser permissions, and same-origin resource policy. Stable API errors omit database and filesystem details. Audit data contains only safe event, actor/target, request, outcome, and limited client context.
 
+Direct Play never accepts a client path or physical file ID. Session creation resolves an authorized logical item to a recorded association. A one-hour random, non-refreshable media credential is delivered only in a SameSite, HttpOnly, path-restricted cookie and only its digest is stored; it is restricted to one playback session and its still-valid user/login session. Media URLs contain no credential. The CSP permits media only from the same origin, and permissive CORS is not enabled.
+
 ## Physical media safety
 
 Physical-library administration is OWNER/ADMIN-only. Source validation requires

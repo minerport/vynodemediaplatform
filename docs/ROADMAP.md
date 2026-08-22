@@ -6,8 +6,8 @@
 | 1 — Identity and access | Owner bootstrap, login, rotating device sessions, RBAC, audit | Secure offline-capable authentication; recovery remains future work |
 | 2 — Libraries and scanning | Roots, guarded scanner, FFprobe adapter, persisted jobs, normalized physical inventory | Complete: real files discovered with progress |
 | 3 — Metadata and artwork | Logical movies/TV, deterministic TMDb identification, credits/companies, provenance, persistent artwork cache | Complete: authenticated local-first browsing and offline artwork without playback |
-| 4 — Playback | Capabilities, explainable decision engine, direct play/remux/HLS lifecycle | Browser playback with tested reasons |
-| 5 — Media experience | Movies/TV, progress, search, collections, home rows | Credible local video experience |
+| 4 — Direct Play | Capability profiles, explainable selection, sessions, ranges, progress, browser player | Complete: compatible originals play without conversion |
+| 5 — Playback pipeline | Direct Stream/remux, FFmpeg pipeline, audio conversion, subtitle delivery | Expanded browser compatibility with tested reasons |
 | 6 — Android ecosystem | Compose phone/tablet and TV clients with Media3 | Native Android and couch playback |
 | 7 — Operations and remote | Windows Service/installer, Unraid publication, remote modes, observability | Maintainable deployments |
 | 8 — Expanded media | Music, photos, audiobooks, books/comics, downloads, casting | Broader media coverage |
