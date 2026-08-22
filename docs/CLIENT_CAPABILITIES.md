@@ -1,5 +1,7 @@
 # Client capability profiles
 
+Client capabilities remain distinct from user preferences. Effective playback uses the strictest client, server, network, and user constraint; language preferences never claim codec or subtitle compatibility.
+
 Playback requests may include a quality identifier and bandwidth ceiling. The server combines these with verified codec, resolution, and server-side network context; clients cannot force an unavailable backend or unsafe output.
 
 Schema version 2 adds `fragmentedMp4Support` and `maximumAudioChannels`. The browser profile reports fMP4 only with detected MP4 support and does not generically claim HEVC. Future native clients can truthfully advertise MKV, HEVC, DTS, TrueHD, or PGS and receive Direct Play.

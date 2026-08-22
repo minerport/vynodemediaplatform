@@ -1,5 +1,7 @@
 # Direct Play and playback sessions
 
+Phase 7 adds per-user semantic track preferences, logical playback contexts, authoritative next-episode navigation, cancellable autoplay, manual timeline markers, Continue Watching dismissal, and safe diagnostics. See `PLAYBACK_PREFERENCES.md`, `AUTOPLAY.md`, and `MEDIA_MARKERS.md`.
+
 Phase 6 adds `VIDEO_TRANSCODE` only after Direct Play, Direct Stream, and Audio Transcode candidates have been exhausted. See `VIDEO_TRANSCODING.md` and `HLS.md` for quality and delivery policy.
 
 Phase 5 adds Direct Stream and audio-only transcode while permanently preferring Direct Play. See [Playback pipeline](PLAYBACK_PIPELINE.md) and [Subtitles](SUBTITLES.md). Generated media uses validated time-based restarts instead of byte ranges. Its route-scoped credential lasts four hours and remains revocable through the bound login session.

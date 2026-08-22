@@ -118,6 +118,14 @@ CREATE INDEX idx_playback_active ON playback_sessions(state,last_activity_at);
 CREATE INDEX idx_playback_user ON playback_sessions(user_id,started_at DESC);
 CREATE INDEX idx_pipeline_session ON playback_pipeline_instances(playback_session_id,started_at DESC);
 CREATE INDEX idx_transcode_state ON transcode_sessions(state,started_at);
+`}, {9, "playback_experience", `
+CREATE TABLE user_playback_preferences (user_id TEXT PRIMARY KEY,audio_languages_json TEXT NOT NULL DEFAULT '["en"]',subtitle_languages_json TEXT NOT NULL DEFAULT '["en"]',subtitle_mode TEXT NOT NULL DEFAULT 'WHEN_AUDIO_NOT_PREFERRED' CHECK(subtitle_mode IN ('OFF','ALWAYS','WHEN_AUDIO_NOT_PREFERRED','FORCED_ONLY')),autoplay_next INTEGER NOT NULL DEFAULT 1,local_quality_id TEXT NOT NULL DEFAULT 'auto',remote_quality_id TEXT NOT NULL DEFAULT 'auto',avoid_commentary INTEGER NOT NULL DEFAULT 1,prefer_hearing_impaired INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
+CREATE TABLE playback_contexts (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,context_type TEXT NOT NULL CHECK(context_type IN ('MOVIE_SINGLE','TV_SERIES','TV_SEASON','CONTINUE_WATCHING')),root_id TEXT,active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,ended_at TEXT,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
+ALTER TABLE playback_sessions ADD COLUMN playback_context_id TEXT REFERENCES playback_contexts(id) ON DELETE SET NULL;
+CREATE TABLE media_markers (id TEXT PRIMARY KEY,logical_type TEXT NOT NULL CHECK(logical_type IN ('MOVIE','EPISODE')),logical_id TEXT NOT NULL,marker_type TEXT NOT NULL CHECK(marker_type IN ('INTRO','RECAP','CREDITS','POST_CREDITS','CUSTOM')),start_seconds REAL NOT NULL CHECK(start_seconds>=0),end_seconds REAL NOT NULL CHECK(end_seconds>start_seconds),source TEXT NOT NULL CHECK(source IN ('MANUAL','FUTURE_AUTOMATIC')),confidence REAL CHECK(confidence IS NULL OR (confidence>=0 AND confidence<=1)),created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+CREATE TABLE continue_watching_dismissals (user_id TEXT NOT NULL,logical_type TEXT NOT NULL CHECK(logical_type IN ('MOVIE','EPISODE')),logical_id TEXT NOT NULL,dismissed_at TEXT NOT NULL,PRIMARY KEY(user_id,logical_type,logical_id),FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
+CREATE INDEX idx_markers_media ON media_markers(logical_type,logical_id,start_seconds);
+CREATE INDEX idx_context_user_active ON playback_contexts(user_id,active,updated_at);
 `}}
 
 func (s *Store) Migrate(ctx context.Context) error {
