@@ -273,7 +273,13 @@ export type MediaMarker={id:string;logicalType:"MOVIE"|"EPISODE";logicalId:strin
 export type IntelligenceJob={ID:string;Type:string;TargetType:string;TargetID:string;State:string;Progress:number;Error?:string;CreatedAt:string};
 export type OptimizedMedia={ID:string;SourceMediaFileID:string;DerivedMediaFileID:string;LogicalType:string;LogicalID:string;Profile:string;Status:string;CreatedAt:string;SizeBytes:number};
 export type MarkerCandidate={ID:string;LogicalType:string;LogicalID:string;Type:string;Source:string;ReviewState:string;SourceIdentity:string;Start:number;End:number;Confidence:number;ConfidenceClass:"HIGH"|"MEDIUM"|"LOW"};
-export type AutomationRule={ID?:string;Name:string;Enabled:boolean;Trigger:string;Timezone:string;Schedule?:{Hour:number;Minute:number};Conditions:{Field:string;Operator:string;Value:unknown}[];Actions:{Type:string;Profile?:string}[];LastExecutionAt?:string};
+export type AutomationRule={ID?:string;Name:string;Enabled:boolean;Trigger:string;Timezone:string;Schedule?:{Hour:number;Minute:number};Conditions:{Field:string;Operator:string;Value:unknown}[];Actions:{Type:string;Profile?:string;CollectionID?:string}[];LastExecutionAt?:string};
+export type CurationItem={Type:"MOVIE"|"SHOW"|"EPISODE";ID:string;Title:string;Subtitle:string;ArtworkID:string;Availability:string;Year:number;Rating:number;Position:number};
+export type Collection={ID:string;Name:string;Description:string;SortTitle:string;Scope:"SERVER_SHARED"|"USER_PRIVATE";OwnerUserID:string;Ordering:string;ArtworkItemType:string;ArtworkItemID:string;Items:CurationItem[]};
+export type RuleNode={logic?:"ALL"|"ANY"|"NOT";children?:RuleNode[];field?:string;operator?:string;value?:unknown};
+export type SmartCollection={ID?:string;Name:string;Description:string;Scope:"SERVER_SHARED"|"USER_PRIVATE";OwnerUserID?:string;RuleSchemaVersion:number;Rule:RuleNode;SortField:string;SortDirection:"ASC"|"DESC";Limit:number;ArtworkItemType?:string;ArtworkItemID?:string;Items?:CurationItem[]};
+export type Playlist={ID:string;Name:string;Description:string;Items:CurationItem[]};
+export type HomeRow={ID:string;Type:string;Title:string;SourceID:string;Enabled:boolean;Position:number;Limit:number;Items:CurationItem[];SeeAll:string};
 export type ContinueItem = {
   logicalType: "MOVIE" | "EPISODE";
   logicalId: string;
@@ -564,6 +570,31 @@ export const api = {
   deleteAutomationRule:(id:string)=>call<void>(`/api/v1/admin/automation-rules/${id}`,{method:"DELETE"}),
   dryRunAutomation:(body:AutomationRule)=>call<{matches:string[];actionsExecuted:number}>("/api/v1/admin/automation-rules/dry-run",{method:"POST",body:JSON.stringify(body)}),
   executeAutomation:(id:string)=>call<{matches:string[];actionsExecuted:number}>(`/api/v1/admin/automation-rules/${id}/execute`,{method:"POST"}),
+  home:()=>call<{rows:HomeRow[]}>("/api/v1/home"),
+  homeRows:()=>call<{rows:HomeRow[]}>("/api/v1/account/home-rows"),
+  saveHomeRow:(x:Partial<HomeRow>)=>call<HomeRow>(x.ID?`/api/v1/account/home-rows/${x.ID}`:"/api/v1/account/home-rows",{method:x.ID?"PATCH":"POST",body:JSON.stringify(x)}),
+  deleteHomeRow:(id:string)=>call<void>(`/api/v1/account/home-rows/${id}`,{method:"DELETE"}),
+  reorderHome:(IDs:string[])=>call<void>("/api/v1/account/home-rows/order",{method:"PUT",body:JSON.stringify({IDs})}),
+  collections:()=>call<{collections:Collection[]}>("/api/v1/collections"),
+  collection:(id:string)=>call<Collection>(`/api/v1/collections/${id}`),
+  saveCollection:(x:Partial<Collection>)=>call<Collection>(x.ID?`/api/v1/collections/${x.ID}`:"/api/v1/collections",{method:x.ID?"PATCH":"POST",body:JSON.stringify(x)}),
+  deleteCollection:(id:string)=>call<void>(`/api/v1/collections/${id}`,{method:"DELETE"}),
+  addCollectionItems:(id:string,Items:Array<{Type:string;ID:string}>)=>call<void>(`/api/v1/collections/${id}/items`,{method:"POST",body:JSON.stringify({Items})}),
+  removeCollectionItem:(id:string,type:string,itemId:string)=>call<void>(`/api/v1/collections/${id}/items/${type}/${itemId}`,{method:"DELETE"}),
+  reorderCollection:(id:string,IDs:string[])=>call<void>(`/api/v1/collections/${id}/order`,{method:"PUT",body:JSON.stringify({IDs})}),
+  smartCollections:()=>call<{smartCollections:SmartCollection[]}>("/api/v1/smart-collections"),
+  smartCollection:(id:string)=>call<SmartCollection>(`/api/v1/smart-collections/${id}`),
+  saveSmart:(x:SmartCollection)=>call<SmartCollection>(x.ID?`/api/v1/smart-collections/${x.ID}`:"/api/v1/smart-collections",{method:x.ID?"PATCH":"POST",body:JSON.stringify(x)}),
+  previewSmart:(x:SmartCollection)=>call<{count:number;items:CurationItem[]}>("/api/v1/smart-collections/preview",{method:"POST",body:JSON.stringify(x)}),
+  playlists:()=>call<{playlists:Playlist[]}>("/api/v1/playlists"),
+  playlist:(id:string)=>call<Playlist>(`/api/v1/playlists/${id}`),
+  savePlaylist:(x:Partial<Playlist>)=>call<Playlist>(x.ID?`/api/v1/playlists/${x.ID}`:"/api/v1/playlists",{method:x.ID?"PATCH":"POST",body:JSON.stringify(x)}),
+  deletePlaylist:(id:string)=>call<void>(`/api/v1/playlists/${id}`,{method:"DELETE"}),
+  addPlaylistItem:(id:string,Type:string,ID:string)=>call<CurationItem>(`/api/v1/playlists/${id}/items`,{method:"POST",body:JSON.stringify({Type,ID})}),
+  removePlaylistItem:(id:string,entryId:string)=>call<void>(`/api/v1/playlists/${id}/items/${entryId}`,{method:"DELETE"}),
+  reorderPlaylist:(id:string,IDs:string[])=>call<void>(`/api/v1/playlists/${id}/order`,{method:"PUT",body:JSON.stringify({IDs})}),
+  personal:(kind:"watchlist"|"favorites")=>call<{items:CurationItem[]}>(`/api/v1/${kind}`),
+  togglePersonal:(kind:"watchlist"|"favorites",type:string,id:string,on:boolean)=>call<void>(`/api/v1/${kind}/${type}/${id}`,{method:on?"PUT":"DELETE"}),
   updatePlayback: (
     id: string,
     state: string,

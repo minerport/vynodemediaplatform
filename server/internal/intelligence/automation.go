@@ -11,7 +11,13 @@ import (
 
 var allowedTriggers = map[string]bool{"MEDIA_ADDED": true, "MEDIA_IDENTIFIED": true, "METADATA_REFRESHED": true, "SCAN_COMPLETED": true, "SCHEDULE": true}
 var allowedFields = map[string]bool{"logicalType": true, "libraryType": true, "resolution": true, "codec": true, "hdr": true, "year": true, "rating": true, "availability": true}
-var allowedActions = map[string]bool{"RUN_MARKER_ANALYSIS": true, "CREATE_OPTIMIZED_VERSION": true}
+var allowedActions = map[string]bool{"RUN_MARKER_ANALYSIS": true, "CREATE_OPTIMIZED_VERSION": true, "ADD_TO_COLLECTION": true, "REMOVE_FROM_COLLECTION": true}
+
+type CollectionManager interface {
+	AutomationMembership(context.Context, string, string, string, string) error
+}
+
+func (s *Service) ConfigureCollections(c CollectionManager) { s.collections = c }
 
 func validateRule(r Rule) error {
 	if strings.TrimSpace(r.Name) == "" || !allowedTriggers[r.Trigger] || len(r.Actions) == 0 {
@@ -30,6 +36,9 @@ func validateRule(r Rule) error {
 			if _, ok := Profiles[a.Profile]; !ok {
 				return ErrValidation
 			}
+		}
+		if (a.Type == "ADD_TO_COLLECTION" || a.Type == "REMOVE_FROM_COLLECTION") && a.CollectionID == "" {
+			return ErrValidation
 		}
 	}
 	if r.Timezone == "" {
@@ -232,6 +241,13 @@ func (s *Service) Execute(ctx context.Context, ruleID, eventID string, depth int
 				_, e = s.Analyze(ctx, t.LogicalType, t.ID)
 				if e == nil {
 					actions++
+				}
+			case "ADD_TO_COLLECTION", "REMOVE_FROM_COLLECTION":
+				if s.collections != nil && t.LogicalType != "EPISODE" {
+					e = s.collections.AutomationMembership(ctx, a.CollectionID, a.Type, t.LogicalType, t.ID)
+					if e == nil {
+						actions++
+					}
 				}
 			}
 		}

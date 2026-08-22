@@ -131,6 +131,16 @@ export function App() {
     <MetadataAdmin />
   ) : page === "automation" ? (
     <AutomationAdmin />
+  ) : page === "collections" ? (
+    <CollectionsPage go={go} admin={admin}/>
+  ) : page.startsWith("collections/") ? (
+    <CollectionPage id={page.split("/")[1]} go={go} admin={admin}/>
+  ) : page === "playlists" ? (
+    <PlaylistsPage />
+  ) : page === "watchlist" || page === "favorites" ? (
+    <PersonalPage kind={page as "watchlist"|"favorites"} go={go}/>
+  ) : page === "settings/home" ? (
+    <HomeSettings />
   ) : (
     <Home info={info} user={user} />
   );
@@ -151,6 +161,11 @@ export function App() {
           <Nav go={go} page={page} target="shows">
             Shows
           </Nav>
+          <Nav go={go} page={page} target="collections">Collections</Nav>
+          <Nav go={go} page={page} target="playlists">Playlists</Nav>
+          <Nav go={go} page={page} target="watchlist">Watchlist</Nav>
+          <Nav go={go} page={page} target="favorites">Favorites</Nav>
+          <Nav go={go} page={page} target="settings/home">Home settings</Nav>
           {admin && (
             <>
               <Nav go={go} page={page} target="libraries">
@@ -232,14 +247,8 @@ function Nav({
   );
 }
 function Home({ info, user }: { info: SystemInfo | null; user: User }) {
-  const [movies, setMovies] = useState<Movie[]>([]),
-    [shows, setShows] = useState<Show[]>([]),
-    [continuing, setContinuing] = useState<ContinueItem[]>([]);
-  useEffect(() => {
-    api.movies().then((x) => setMovies(x.movies.slice(0, 8)));
-    api.shows().then((x) => setShows(x.shows.slice(0, 8)));
-    api.continueWatching().then((x) => setContinuing(x.items));
-  }, []);
+  const [rows,setRows]=useState<import("./api").HomeRow[]>([]);
+  useEffect(()=>{api.home().then(x=>setRows(x.rows??[]))},[]);
   return (
     <section className="content">
       <div className="hero">
@@ -247,46 +256,14 @@ function Home({ info, user }: { info: SystemInfo | null; user: User }) {
         <h2>{info?.serverName}</h2>
         <p>Welcome back, {user.displayName}.</p>
       </div>
-      {continuing.length > 0 && <><h2>Continue Watching</h2><div className="continue-grid">{continuing.map(x=><div key={`${x.logicalType}-${x.logicalId}`} className="continue-card"><strong>{x.title}</strong><span>{formatTime(x.position)} of {formatTime(x.duration)} · {formatTime(x.duration-x.position)} remaining</span><progress value={x.progress} max={1}/><button onClick={()=>location.assign(`/watch/${x.logicalType.toLowerCase()}/${x.logicalId}`)}>Resume</button><button onClick={()=>api.dismissContinue(x.logicalType,x.logicalId).then(()=>setContinuing(items=>items.filter(i=>i!==x)))}>Remove</button></div>)}</div></>}
-      {!movies.length && !shows.length && (
+      {!rows.length && (
         <div className="empty">
           <div className="empty-icon">V</div>
           <h2>Your library is ready</h2>
           <p>Identified movies and shows will appear here.</p>
         </div>
       )}
-      {movies.length > 0 && (
-        <>
-          <h2>Recently Added Movies</h2>
-          <div className="poster-grid">
-            {movies.map((x) => (
-              <MediaCard
-                key={x.id}
-                kind="movies"
-                id={x.id}
-                title={x.title}
-                year={x.year}
-              />
-            ))}
-          </div>
-        </>
-      )}
-      {shows.length > 0 && (
-        <>
-          <h2>Recently Added Shows</h2>
-          <div className="poster-grid">
-            {shows.map((x) => (
-              <MediaCard
-                key={x.id}
-                kind="shows"
-                id={x.id}
-                title={x.title}
-                year={x.year}
-              />
-            ))}
-          </div>
-        </>
-      )}
+      {rows.map(r=><section key={r.ID} className="home-row"><h2>{r.Title}</h2><div className="poster-grid">{r.Items.map((x,i)=><CurationCard key={`${x.Type}-${x.ID}-${i}`} item={x}/>)}</div>{r.SeeAll&&<a href={r.SeeAll}>See all</a>}</section>)}
     </section>
   );
 }
@@ -1493,6 +1470,7 @@ function MovieDetail({ id, go }: { id: string; go: (p: Page) => void }) {
           <h2>
             {item.title} {item.year && `(${item.year})`}
           </h2>
+          <CurationActions type="MOVIE" id={id}/>
           <p>
             {[
               item.runtimeMinutes && `${item.runtimeMinutes} min`,
@@ -1594,6 +1572,7 @@ function ShowDetail({ id, go }: { id: string; go: (p: Page) => void }) {
         <ArtworkImage kind="shows" id={id} type="POSTER" title={item.title} />
         <div>
           <h2>{item.title}</h2>
+          <CurationActions type="SHOW" id={id}/>
           <p>{item.overview || "No overview available."}</p>
         </div>
       </div>
@@ -1648,6 +1627,15 @@ function AutomationAdmin(){
     <h3>Managed optimized versions</h3>{!optimized.length&&<p>No optimized versions.</p>}{optimized.map(o=><div className="list-row" key={o.ID}><span>{o.LogicalType} {o.LogicalID} · {o.Profile}<br/>{o.Status} · {(o.SizeBytes/1048576).toFixed(1)} MB</span><button onClick={()=>confirm("Delete this optimized copy? The original will remain untouched.")&&api.deleteOptimized(o.ID).then(load)}>Delete copy</button></div>)}
   </section>
 }
+
+function CurationCard({item}:{item:import("./api").CurationItem}){const path=item.Type==="MOVIE"?`/movies/${item.ID}`:item.Type==="SHOW"?`/shows/${item.ID}`:`/watch/episode/${item.ID}`;return <a className="media-card" href={path}>{item.Type!=="EPISODE"?<ArtworkImage kind={item.Type==="MOVIE"?"movies":"shows"} id={item.ID} type="POSTER" title={item.Title}/>:<div className="poster-fallback">E</div>}<strong>{item.Title}</strong><span>{item.Subtitle||item.Year||item.Type}</span></a>}
+function CurationActions({type,id}:{type:"MOVIE"|"SHOW";id:string}){const [watch,setWatch]=useState(false),[favorite,setFavorite]=useState(false);useEffect(()=>{Promise.all([api.personal("watchlist"),api.personal("favorites")]).then(([w,f])=>{setWatch(w.items.some(x=>x.Type===type&&x.ID===id));setFavorite(f.items.some(x=>x.Type===type&&x.ID===id))})},[type,id]);return <div><button onClick={()=>api.togglePersonal("watchlist",type,id,!watch).then(()=>setWatch(!watch))}>{watch?"Remove from Watchlist":"Add to Watchlist"}</button><button onClick={()=>api.togglePersonal("favorites",type,id,!favorite).then(()=>setFavorite(!favorite))}>{favorite?"Remove Favorite":"Favorite"}</button></div>}
+function CollectionsPage({go,admin}:{go:(p:Page)=>void;admin:boolean}){const [manual,setManual]=useState<import("./api").Collection[]>([]),[smart,setSmart]=useState<import("./api").SmartCollection[]>([]),[message,setMessage]=useState("");const load=()=>Promise.all([api.collections(),api.smartCollections()]).then(([a,b])=>{setManual(a.collections??[]);setSmart(b.smartCollections??[])});useEffect(()=>{load()},[]);return <section className="content"><h2>Collections</h2><p>Manual collections preserve deliberate membership. Smart collections are dynamic saved queries.</p>{admin&&<><form onSubmit={e=>{e.preventDefault();const f=e.currentTarget,d=new FormData(f);api.saveCollection({Name:String(d.get("name")),Description:"",Scope:"SERVER_SHARED",Ordering:"CUSTOM"}).then(()=>{f.reset();load()}).catch(x=>setMessage(x.message))}}><h3>New manual collection</h3><input name="name" required placeholder="Collection name"/><button>Create</button></form><SmartBuilder after={load} message={setMessage}/></>}<h3>Manual</h3><div className="poster-grid">{manual.map(x=><button className="media-card" key={x.ID} onClick={()=>go(`collections/${x.ID}`)}>{x.ArtworkItemID?<ArtworkImage kind={x.ArtworkItemType==="MOVIE"?"movies":"shows"} id={x.ArtworkItemID} type="POSTER" title={x.Name}/>:<div className="poster-fallback">C</div>}<strong>{x.Name}</strong><span>Manual · {x.Scope.replace("_"," ")}</span></button>)}</div><h3>Dynamic</h3><div className="poster-grid">{smart.map(x=><button className="media-card" key={x.ID} onClick={()=>go(`collections/${x.ID}`)}><div className="poster-fallback">S</div><strong>{x.Name}</strong><span>Dynamic · {x.Scope.replace("_"," ")}</span></button>)}</div>{message&&<p role="status">{message}</p>}</section>}
+function SmartBuilder({after,message}:{after:()=>void;message:(x:string)=>void}){const [preview,setPreview]=useState("");const build=(f:HTMLFormElement)=>{const d=new FormData(f);return {Name:String(d.get("name")),Description:"",Scope:"SERVER_SHARED" as const,RuleSchemaVersion:1,Rule:{logic:"ALL" as const,children:[{field:String(d.get("field")),operator:String(d.get("operator")),value:String(d.get("value"))}]},SortField:"title",SortDirection:"ASC" as const,Limit:50}};return <form onSubmit={e=>{e.preventDefault();const f=e.currentTarget;api.saveSmart(build(f)).then(()=>{f.reset();after()}).catch(x=>message(x.message))}}><h3>New smart collection</h3><input name="name" required placeholder="Collection name"/><select name="field"><option value="genre">Genre</option><option value="title">Title</option><option value="year">Year</option><option value="resolution">Resolution</option><option value="videoCodec">Video codec</option><option value="hdr">HDR</option><option value="availability">Availability</option></select><select name="operator"><option value="EQUALS">equals</option><option value="CONTAINS">contains</option><option value="GTE">at least</option></select><input name="value" required placeholder="Value"/><button type="button" onClick={e=>api.previewSmart(build(e.currentTarget.form!)).then(x=>setPreview(`${x.count} matches`)).catch(x=>message(x.message))}>Preview</button><button>Save dynamic collection</button>{preview&&<span>{preview}</span>}</form>}
+function CollectionPage({id,go,admin}:{id:string;go:(p:Page)=>void;admin:boolean}){const [manual,setManual]=useState<import("./api").Collection|null>(null),[smart,setSmart]=useState<import("./api").SmartCollection|null>(null),[library,setLibrary]=useState<Array<{Type:string;ID:string;Title:string}>>([]),[selected,setSelected]=useState<string[]>([]);const load=()=>api.collection(id).then(setManual).catch(()=>api.smartCollection(id).then(setSmart));useEffect(()=>{load();if(admin)Promise.all([api.movies(),api.shows()]).then(([m,s])=>setLibrary([...m.movies.map(x=>({Type:"MOVIE",ID:x.id,Title:x.title})),...s.shows.map(x=>({Type:"SHOW",ID:x.id,Title:x.title}))]))},[id,admin]);const x=manual??smart;const move=(i:number,d:number)=>{if(!manual)return;const copy=[...manual.Items],j=i+d;if(j<0||j>=copy.length)return;[copy[i],copy[j]]=[copy[j],copy[i]];api.reorderCollection(id,copy.map(v=>`${v.Type}:${v.ID}`)).then(load)};return <section className="content"><button onClick={()=>go("collections")}>Back</button><h2>{x?.Name??"Collection"}</h2><p>{manual?"Manual collection":"Dynamic smart collection"}</p>{admin&&manual&&<><button onClick={()=>confirm("Delete this collection? Media will remain untouched.")&&api.deleteCollection(id).then(()=>go("collections"))}>Delete collection</button><details><summary>Add multiple library items</summary>{library.filter(v=>!manual.Items.some(i=>i.Type===v.Type&&i.ID===v.ID)).map(v=><label key={`${v.Type}-${v.ID}`}><input type="checkbox" checked={selected.includes(`${v.Type}:${v.ID}`)} onChange={e=>setSelected(a=>e.target.checked?[...a,`${v.Type}:${v.ID}`]:a.filter(k=>k!==`${v.Type}:${v.ID}`))}/>{v.Title} · {v.Type}</label>)}<button onClick={()=>api.addCollectionItems(id,selected.map(k=>{const [Type,ID]=k.split(":");return {Type,ID}})).then(()=>{setSelected([]);load()})}>Add selected</button></details></>}<div className="poster-grid">{x?.Items?.map((it,i)=><div key={`${it.Type}-${it.ID}-${i}`}><CurationCard item={it}/>{admin&&manual&&<><button onClick={()=>move(i,-1)}>Up</button><button onClick={()=>move(i,1)}>Down</button><button onClick={()=>api.removeCollectionItem(id,it.Type,it.ID).then(load)}>Remove</button></>}</div>)}</div></section>}
+function PlaylistsPage(){const [items,setItems]=useState<import("./api").Playlist[]>([]),[active,setActive]=useState<import("./api").Playlist|null>(null);const load=()=>api.playlists().then(x=>setItems(x.playlists??[]));const open=(id:string)=>api.playlist(id).then(x=>setActive({...x,Items:x.Items??[]}));useEffect(()=>{load()},[]);const move=(i:number,d:number)=>{if(!active)return;const copy=[...(active.Items??[])],j=i+d;if(j<0||j>=copy.length)return;[copy[i],copy[j]]=[copy[j],copy[i]];api.reorderPlaylist(active.ID,copy.map(x=>x.ArtworkID)).then(()=>open(active.ID))};return <section className="content"><h2>Playlists</h2><p>Personal ordered Movie and Episode queues. Duplicate entries are allowed.</p><form onSubmit={e=>{e.preventDefault();const f=e.currentTarget,d=new FormData(f);api.savePlaylist({Name:String(d.get("name")),Description:""}).then(()=>{f.reset();load()})}}><input name="name" required placeholder="Playlist name"/><button>Create</button></form>{items.map(x=><div className="list-row" key={x.ID}><button onClick={()=>open(x.ID)}>{x.Name}</button><button onClick={()=>api.deletePlaylist(x.ID).then(()=>{setActive(null);load()})}>Delete</button></div>)}{active&&<section><h3>{active.Name}</h3><form onSubmit={e=>{e.preventDefault();const f=e.currentTarget,d=new FormData(f);api.addPlaylistItem(active.ID,String(d.get("type")),String(d.get("id"))).then(()=>{f.reset();open(active.ID)})}}><select name="type"><option>MOVIE</option><option>EPISODE</option></select><input name="id" required placeholder="Logical media ID"/><button>Add item</button></form>{(active.Items??[]).map((x,i)=><div className="list-row" key={x.ArtworkID}><span>{x.Title} · {x.Type}{x.Subtitle&&` · ${x.Subtitle}`}</span><span><button onClick={()=>location.assign(`/watch/${x.Type.toLowerCase()}/${x.ID}`)}>Play</button><button onClick={()=>move(i,-1)}>Up</button><button onClick={()=>move(i,1)}>Down</button><button onClick={()=>api.removePlaylistItem(active.ID,x.ArtworkID).then(()=>open(active.ID))}>Remove</button></span></div>)}</section>}</section>}
+function PersonalPage({kind,go}:{kind:"watchlist"|"favorites";go:(p:Page)=>void}){const [items,setItems]=useState<import("./api").CurationItem[]>([]);useEffect(()=>{api.personal(kind).then(x=>setItems(x.items??[]))},[kind]);return <section className="content"><h2>{kind==="watchlist"?"My Watchlist":"Favorites"}</h2><div className="poster-grid">{items.map((x,i)=><div key={`${x.Type}-${x.ID}-${i}`}><CurationCard item={x}/><button onClick={()=>api.togglePersonal(kind,x.Type,x.ID,false).then(()=>setItems(v=>v.filter(y=>y!==x)))}>Remove</button></div>)}</div>{!items.length&&<p>Nothing here yet.</p>}<button onClick={()=>go("home")}>Home</button></section>}
+function HomeSettings(){const [rows,setRows]=useState<import("./api").HomeRow[]>([]),[message,setMessage]=useState("");const load=()=>api.homeRows().then(x=>setRows(x.rows??[]));useEffect(()=>{load()},[]);const move=(i:number,d:number)=>{const copy=[...rows],j=i+d;if(j<0||j>=copy.length)return;[copy[i],copy[j]]=[copy[j],copy[i]];api.reorderHome(copy.map(x=>x.ID)).then(load)};return <section className="content"><h2>Home rows</h2><p>Each account has its own ordered layout. Empty rows stay configured here but are omitted from Home.</p>{rows.map((r,i)=><div className="list-row" key={r.ID}><span><strong>{r.Title}</strong><br/>{r.Type} · limit {r.Limit}</span><span><button aria-label={`Move ${r.Title} up`} onClick={()=>move(i,-1)}>Up</button><button aria-label={`Move ${r.Title} down`} onClick={()=>move(i,1)}>Down</button><button onClick={()=>api.saveHomeRow({...r,Enabled:!r.Enabled}).then(load)}>{r.Enabled?"Disable":"Enable"}</button><button onClick={()=>api.deleteHomeRow(r.ID).then(load)}>Remove</button></span></div>)}<form onSubmit={e=>{e.preventDefault();const f=e.currentTarget,d=new FormData(f),type=String(d.get("type"));api.saveHomeRow({Type:type,Title:String(d.get("title")),SourceID:["COLLECTION","SMART_COLLECTION","PLAYLIST"].includes(type)?String(d.get("source")):"",Enabled:true,Limit:Number(d.get("limit"))}).then(()=>{f.reset();load()}).catch(x=>setMessage(x.message))}}><h3>Add row</h3><select name="type"><option>WATCHLIST</option><option>FAVORITES</option><option>RECENTLY_ADDED_MOVIES</option><option>RECENTLY_ADDED_SHOWS</option><option>COLLECTION</option><option>SMART_COLLECTION</option><option>PLAYLIST</option></select><input name="title" required placeholder="Row title"/><input name="source" placeholder="Collection or playlist ID"/><select name="limit"><option>10</option><option>20</option><option>30</option></select><button>Add row</button></form>{message&&<p role="status">{message}</p>}</section>}
 
 function ArtworkManager({
   kind,

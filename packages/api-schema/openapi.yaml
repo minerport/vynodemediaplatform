@@ -187,6 +187,66 @@ paths:
   /api/v1/admin/automation-rules/{id}/execute:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     post: { operationId: executeAutomationRule, summary: Idempotent bounded execution with recursion depth guard, security: [{ bearerAuth: [] }], responses: { '200': { description: Execution result }, '403': { description: Denied } } }
+  /api/v1/collections:
+    get: { operationId: listCollections, summary: Shared and current-user private manual collections, security: [{ bearerAuth: [] }], responses: { '200': { description: Visible collections }, '403': { description: Denied } } }
+    post: { operationId: createCollection, summary: Creates a distinct manual collection, security: [{ bearerAuth: [] }], responses: { '201': { description: Collection created }, '400': { $ref: '#/components/responses/BadRequest' } } }
+  /api/v1/collections/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get: { operationId: getCollection, security: [{ bearerAuth: [] }], responses: { '200': { description: Collection with ordered logical items }, '404': { $ref: '#/components/responses/NotFound' } } }
+    patch: { operationId: updateCollection, security: [{ bearerAuth: [] }], responses: { '200': { description: Collection updated }, '403': { description: Denied } } }
+    delete: { operationId: deleteCollection, summary: Deletes only the collection and never logical or physical media, security: [{ bearerAuth: [] }], responses: { '204': { description: Collection deleted }, '403': { description: Denied } } }
+  /api/v1/collections/{id}/items:
+    post: { operationId: addCollectionItems, summary: Adds unique typed logical Movie or Show memberships, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '204': { description: Memberships added }, '400': { $ref: '#/components/responses/BadRequest' } } }
+  /api/v1/collections/{id}/items/{type}/{itemId}:
+    delete: { operationId: removeCollectionItem, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string } }, { name: type, in: path, required: true, schema: { type: string } }, { name: itemId, in: path, required: true, schema: { type: string } }], responses: { '204': { description: Membership removed }, '404': { $ref: '#/components/responses/NotFound' } } }
+  /api/v1/collections/{id}/order:
+    put: { operationId: reorderCollection, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '204': { description: Custom order saved }, '400': { $ref: '#/components/responses/BadRequest' } } }
+  /api/v1/smart-collections:
+    get: { operationId: listSmartCollections, summary: Lists distinct dynamic saved queries, security: [{ bearerAuth: [] }], responses: { '200': { description: Visible smart collections }, '403': { description: Denied } } }
+    post: { operationId: createSmartCollection, summary: Saves a validated versioned rule AST without arbitrary SQL, security: [{ bearerAuth: [] }], responses: { '200': { description: Smart collection saved }, '400': { $ref: '#/components/responses/BadRequest' } } }
+  /api/v1/smart-collections/preview:
+    post: { operationId: previewSmartCollection, summary: Side-effect-free bounded preview, security: [{ bearerAuth: [] }], responses: { '200': { description: Match count and sample }, '400': { $ref: '#/components/responses/BadRequest' } } }
+  /api/v1/smart-collections/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get: { operationId: getSmartCollection, security: [{ bearerAuth: [] }], responses: { '200': { description: Dynamically evaluated collection }, '404': { $ref: '#/components/responses/NotFound' } } }
+    patch: { operationId: updateSmartCollection, security: [{ bearerAuth: [] }], responses: { '200': { description: Smart collection updated }, '403': { description: Denied } } }
+    delete: { operationId: deleteSmartCollection, security: [{ bearerAuth: [] }], responses: { '204': { description: Smart collection deleted }, '403': { description: Denied } } }
+  /api/v1/playlists:
+    get: { operationId: listMyPlaylists, security: [{ bearerAuth: [] }], responses: { '200': { description: Current user's private playlists }, '403': { description: Denied } } }
+    post: { operationId: createPlaylist, security: [{ bearerAuth: [] }], responses: { '200': { description: Playlist created }, '400': { $ref: '#/components/responses/BadRequest' } } }
+  /api/v1/playlists/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get: { operationId: getMyPlaylist, security: [{ bearerAuth: [] }], responses: { '200': { description: Ordered mixed Movie and Episode entries }, '404': { $ref: '#/components/responses/NotFound' } } }
+    patch: { operationId: updateMyPlaylist, security: [{ bearerAuth: [] }], responses: { '200': { description: Playlist updated }, '404': { $ref: '#/components/responses/NotFound' } } }
+    delete: { operationId: deleteMyPlaylist, security: [{ bearerAuth: [] }], responses: { '204': { description: Playlist deleted }, '404': { $ref: '#/components/responses/NotFound' } } }
+  /api/v1/playlists/{id}/items:
+    post: { operationId: addMyPlaylistItem, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '201': { description: Movie or Episode entry added; duplicates are retained as distinct entries }, '400': { $ref: '#/components/responses/BadRequest' } } }
+  /api/v1/playlists/{id}/items/order:
+    put: { operationId: reorderMyPlaylistItems, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '204': { description: Entry order saved }, '400': { $ref: '#/components/responses/BadRequest' } } }
+  /api/v1/playlists/{id}/items/{entryId}:
+    delete: { operationId: removeMyPlaylistItem, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string } }, { name: entryId, in: path, required: true, schema: { type: string } }], responses: { '204': { description: Playlist entry removed }, '404': { $ref: '#/components/responses/NotFound' } } }
+  /api/v1/playlists/{id}/items/{entryId}/navigation:
+    get: { operationId: getMyPlaylistNavigation, summary: Resolves previous and next entries in the current saved order, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string } }, { name: entryId, in: path, required: true, schema: { type: string } }], responses: { '200': { description: Previous and next playlist entries }, '404': { $ref: '#/components/responses/NotFound' } } }
+  /api/v1/watchlist:
+    get: { operationId: getMyWatchlist, security: [{ bearerAuth: [] }], responses: { '200': { description: Current user's unique Movie and Show watchlist }, '403': { description: Denied } } }
+  /api/v1/watchlist/{type}/{itemId}:
+    put: { operationId: addToMyWatchlist, security: [{ bearerAuth: [] }], parameters: [{ name: type, in: path, required: true, schema: { type: string } }, { name: itemId, in: path, required: true, schema: { type: string } }], responses: { '204': { description: Added without changing progress }, '400': { $ref: '#/components/responses/BadRequest' } } }
+    delete: { operationId: removeFromMyWatchlist, security: [{ bearerAuth: [] }], parameters: [{ name: type, in: path, required: true, schema: { type: string } }, { name: itemId, in: path, required: true, schema: { type: string } }], responses: { '204': { description: Removed without changing progress }, '400': { $ref: '#/components/responses/BadRequest' } } }
+  /api/v1/favorites:
+    get: { operationId: getMyFavorites, security: [{ bearerAuth: [] }], responses: { '200': { description: Current user's unique Movie and Show favorites }, '403': { description: Denied } } }
+  /api/v1/favorites/{type}/{itemId}:
+    put: { operationId: addMyFavorite, security: [{ bearerAuth: [] }], parameters: [{ name: type, in: path, required: true, schema: { type: string } }, { name: itemId, in: path, required: true, schema: { type: string } }], responses: { '204': { description: Favorite added }, '400': { $ref: '#/components/responses/BadRequest' } } }
+    delete: { operationId: removeMyFavorite, security: [{ bearerAuth: [] }], parameters: [{ name: type, in: path, required: true, schema: { type: string } }, { name: itemId, in: path, required: true, schema: { type: string } }], responses: { '204': { description: Favorite removed }, '400': { $ref: '#/components/responses/BadRequest' } } }
+  /api/v1/home:
+    get: { operationId: getComposedHome, summary: Resolves ordered non-empty rows through modular server-side row resolvers, security: [{ bearerAuth: [] }], responses: { '200': { description: Current user's composed Home }, '403': { description: Denied } } }
+  /api/v1/account/home-rows:
+    get: { operationId: getMyHomeRows, security: [{ bearerAuth: [] }], responses: { '200': { description: Configured rows including disabled and empty rows }, '403': { description: Denied } } }
+    post: { operationId: addMyHomeRow, security: [{ bearerAuth: [] }], responses: { '200': { description: Typed row added }, '400': { $ref: '#/components/responses/BadRequest' } } }
+  /api/v1/account/home-rows/order:
+    put: { operationId: reorderMyHomeRows, security: [{ bearerAuth: [] }], responses: { '204': { description: Per-user order saved }, '400': { $ref: '#/components/responses/BadRequest' } } }
+  /api/v1/account/home-rows/{id}:
+    patch: { operationId: updateMyHomeRow, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: Row updated }, '404': { $ref: '#/components/responses/NotFound' } } }
+    delete: { operationId: removeMyHomeRow, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '204': { description: Row removed }, '404': { $ref: '#/components/responses/NotFound' } } }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
