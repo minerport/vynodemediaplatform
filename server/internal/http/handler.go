@@ -10,6 +10,7 @@ import (
 	"github.com/vynode/media/server/internal/intelligence"
 	"github.com/vynode/media/server/internal/media"
 	"github.com/vynode/media/server/internal/metadata"
+	"github.com/vynode/media/server/internal/observability"
 	"github.com/vynode/media/server/internal/playback"
 	"log/slog"
 	"net/http"
@@ -40,6 +41,7 @@ type Handler struct {
 	playback      *playback.Service
 	intelligence  *intelligence.Service
 	curation      *curation.Service
+	observability *observability.Service
 	allowedOrigin string
 }
 type errorResponse struct {
@@ -59,6 +61,8 @@ func NewHandler(logger *slog.Logger, readiness Readiness, info SystemInfo, authS
 			h.intelligence = x
 		case *curation.Service:
 			h.curation = x
+		case *observability.Service:
+			h.observability = x
 		}
 	}
 	mux := http.NewServeMux()
@@ -83,6 +87,9 @@ func NewHandler(logger *slog.Logger, readiness Readiness, info SystemInfo, authS
 	}
 	if h.curation != nil {
 		h.curationRoutes(mux)
+	}
+	if h.observability != nil {
+		h.observabilityRoutes(mux)
 	}
 	if info.WebDir != "" {
 		mux.Handle("/", spaHandler(info.WebDir))

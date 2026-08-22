@@ -27,3 +27,6 @@ TMDb is an optional external metadata service accessed through its documented AP
 Transitive versions and declared licenses are locked in `go.sum` and
 `package-lock.json`; releases must generate a full notices/SBOM report. No Plex,
 Jellyfin, or Emby source, assets, protocols, text, or branding are included.
+# Phase 10 dependency note
+
+Phase 10 adds no third-party runtime or chart dependency. Metrics, HMAC signing, URL/DNS policy, asynchronous delivery, and compact dashboard visualizations use the Go and browser standard libraries.

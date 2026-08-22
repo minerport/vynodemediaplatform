@@ -247,6 +247,39 @@ paths:
   /api/v1/account/home-rows/{id}:
     patch: { operationId: updateMyHomeRow, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: Row updated }, '404': { $ref: '#/components/responses/NotFound' } } }
     delete: { operationId: removeMyHomeRow, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '204': { description: Row removed }, '404': { $ref: '#/components/responses/NotFound' } } }
+  /api/v1/admin/dashboard:
+    get: { operationId: getAdminDashboard, summary: Requires observability.view; returns real current metrics and local operational summaries, security: [{ bearerAuth: [] }], responses: { '200': { description: Administrative dashboard }, '403': { description: Denied } } }
+  /api/v1/admin/analytics/playback:
+    get: { operationId: getAdminPlaybackAnalytics, summary: Requires observability.view; UTC range is bounded to 366 days, security: [{ bearerAuth: [] }], parameters: [{ name: from, in: query, schema: { type: string, format: date-time } }, { name: to, in: query, schema: { type: string, format: date-time } }, { name: userId, in: query, schema: { type: string } }], responses: { '200': { description: Server-wide playback analytics }, '400': { $ref: '#/components/responses/BadRequest' } } }
+  /api/v1/account/playback-history/summary:
+    get: { operationId: getMyPlaybackHistorySummary, summary: Uses authenticated principal only; never accepts another user identity, security: [{ bearerAuth: [] }], responses: { '200': { description: Personal playback summary }, '403': { description: Denied } } }
+  /api/v1/admin/library-statistics:
+    get: { operationId: getAdminLibraryStatistics, summary: Requires observability.view, security: [{ bearerAuth: [] }], responses: { '200': { description: "Logical, physical, availability, matching, optimization, codec and quality counts" }, '403': { description: Denied } } }
+  /api/v1/admin/jobs:
+    get: { operationId: listAdminJobs, summary: "Requires observability.view; unified real scan, metadata and background jobs", security: [{ bearerAuth: [] }], responses: { '200': { description: Bounded job history }, '403': { description: Denied } } }
+  /api/v1/admin/health/issues:
+    get: { operationId: listHealthIssues, summary: Requires observability.view, security: [{ bearerAuth: [] }], responses: { '200': { description: Health issues and lifecycle states }, '403': { description: Denied } } }
+  /api/v1/admin/health/reevaluate:
+    post: { operationId: reevaluateHealth, summary: Requires observability.manage; evaluates local known state without provider calls or reprobes, security: [{ bearerAuth: [] }], responses: { '200': { description: Reevaluated issues }, '403': { description: Denied } } }
+  /api/v1/admin/health/issues/{id}/ignored:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    put: { operationId: ignoreHealthIssue, summary: Requires observability.manage and is audited, security: [{ bearerAuth: [] }], responses: { '204': { description: Ignored }, '404': { $ref: '#/components/responses/NotFound' } } }
+    delete: { operationId: unignoreHealthIssue, summary: Requires observability.manage and is audited, security: [{ bearerAuth: [] }], responses: { '204': { description: Unignored }, '404': { $ref: '#/components/responses/NotFound' } } }
+  /api/v1/admin/operational-events:
+    get: { operationId: listOperationalEvents, summary: Requires observability.view; separate from security audit, security: [{ bearerAuth: [] }], responses: { '200': { description: Bounded meaningful operational events }, '403': { description: Denied } } }
+  /api/v1/admin/notifications/catalog:
+    get: { operationId: getNotificationEventCatalog, summary: Requires observability.view, security: [{ bearerAuth: [] }], responses: { '200': { description: Supported typed events }, '403': { description: Denied } } }
+  /api/v1/admin/notifications/destinations:
+    get: { operationId: listNotificationDestinations, summary: Requires observability.view; secrets are never returned, security: [{ bearerAuth: [] }], responses: { '200': { description: Webhook destinations and subscriptions }, '403': { description: Denied } } }
+    post: { operationId: createNotificationDestination, summary: Requires observability.manage; SSRF policy is enforced and action audited, security: [{ bearerAuth: [] }], responses: { '201': { description: Destination created }, '400': { $ref: '#/components/responses/BadRequest' } } }
+  /api/v1/admin/notifications/destinations/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    patch: { operationId: updateNotificationDestination, summary: Requires observability.manage and is audited, security: [{ bearerAuth: [] }], responses: { '200': { description: Destination updated without exposing secret }, '400': { $ref: '#/components/responses/BadRequest' } } }
+    delete: { operationId: deleteNotificationDestination, summary: Requires observability.manage; pending deliveries are removed and action audited, security: [{ bearerAuth: [] }], responses: { '204': { description: Destination deleted }, '404': { $ref: '#/components/responses/NotFound' } } }
+  /api/v1/admin/notifications/destinations/{id}/test:
+    post: { operationId: testNotificationDestination, summary: Requires observability.manage; queues synthetic event through normal delivery pipeline, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '202': { description: Test delivery queued }, '400': { $ref: '#/components/responses/BadRequest' } } }
+  /api/v1/admin/notifications/deliveries:
+    get: { operationId: listNotificationDeliveries, summary: Requires observability.view; contains no response bodies or secrets, security: [{ bearerAuth: [] }], responses: { '200': { description: Bounded delivery history }, '403': { description: Denied } } }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
