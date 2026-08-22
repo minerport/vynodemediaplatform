@@ -1,6 +1,6 @@
 # Implementation roadmap
 
-Phase 7 adds playback preferences, autoplay contexts, Continue Watching controls, manual markers, skip controls, and playback diagnostics. Phase 8 adds conservative local automatic markers, durable manual precedence/review, controlled optimized derivatives, structured automation, scheduling foundations, and unified background work visibility. Phase 9 adds distinct manual/smart collections, private playlists, watchlists, favorites, and per-user typed Home layouts. Phase 10 is server dashboard, playback analytics, library health, notifications, webhooks, and administrative observability.
+Phase 7 adds playback preferences, autoplay contexts, Continue Watching controls, manual markers, skip controls, and playback diagnostics. Phase 8 adds conservative local automatic markers, durable manual precedence/review, controlled optimized derivatives, structured automation, scheduling foundations, and unified background work visibility. Phase 9 adds distinct manual/smart collections, private playlists, watchlists, favorites, and per-user typed Home layouts. Phase 10 adds a real-data operational dashboard, bounded playback analytics, source-aware library health, unified jobs, operational events, and secure provider-neutral webhooks.
 
 Phase 5 provides Direct Stream, audio-only transcoding, text subtitles, supervised pipelines, and Continue Watching. Phase 6 is reserved for full video transcoding, adaptive HLS, quality selection, hardware acceleration, HDR/tone-mapping foundations, and resource management.
 

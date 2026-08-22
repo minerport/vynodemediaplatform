@@ -162,6 +162,19 @@ CREATE INDEX idx_playlist_items_order ON playlist_items(playlist_id,position);
 CREATE INDEX idx_watchlist_user_added ON watchlist_items(user_id,added_at DESC);
 CREATE INDEX idx_favorites_user_added ON favorite_items(user_id,added_at DESC);
 CREATE INDEX idx_home_rows_user_order ON home_rows(user_id,position);
+`}, {12, "observability_and_health", `
+CREATE TABLE operational_events (id TEXT PRIMARY KEY,event_type TEXT NOT NULL,category TEXT NOT NULL,severity TEXT NOT NULL,payload_json TEXT NOT NULL DEFAULT '{}',dedupe_key TEXT,created_at TEXT NOT NULL);
+CREATE TABLE health_issues (id TEXT PRIMARY KEY,category TEXT NOT NULL,severity TEXT NOT NULL,reference_type TEXT NOT NULL,reference_id TEXT NOT NULL,description TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('OPEN','RESOLVED','IGNORED')),first_detected_at TEXT NOT NULL,last_detected_at TEXT NOT NULL,resolved_at TEXT,ignored_at TEXT,UNIQUE(category,reference_type,reference_id));
+CREATE TABLE notification_destinations (id TEXT PRIMARY KEY,name TEXT NOT NULL,url TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 1,allow_private_network INTEGER NOT NULL DEFAULT 0,allow_insecure_http INTEGER NOT NULL DEFAULT 0,secret_ciphertext TEXT,max_attempts INTEGER NOT NULL DEFAULT 3 CHECK(max_attempts BETWEEN 1 AND 5),created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+CREATE TABLE notification_subscriptions (destination_id TEXT NOT NULL,event_type TEXT NOT NULL,PRIMARY KEY(destination_id,event_type),FOREIGN KEY(destination_id) REFERENCES notification_destinations(id) ON DELETE CASCADE);
+CREATE TABLE notification_deliveries (id TEXT PRIMARY KEY,event_id TEXT NOT NULL,destination_id TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('PENDING','RETRYING','DELIVERED','FAILED','CANCELED')),attempt_count INTEGER NOT NULL DEFAULT 0,last_http_status INTEGER,last_error TEXT,next_attempt_at TEXT,delivered_at TEXT,created_at TEXT NOT NULL,UNIQUE(event_id,destination_id),FOREIGN KEY(event_id) REFERENCES operational_events(id) ON DELETE CASCADE,FOREIGN KEY(destination_id) REFERENCES notification_destinations(id) ON DELETE CASCADE);
+CREATE INDEX idx_playback_history_created ON playback_history(created_at DESC);
+CREATE INDEX idx_playback_history_user_created ON playback_history(user_id,created_at DESC);
+CREATE INDEX idx_playback_sessions_mode_started ON playback_sessions(mode,started_at DESC);
+CREATE INDEX idx_health_status_category ON health_issues(status,severity,category);
+CREATE INDEX idx_operational_created_type ON operational_events(created_at DESC,event_type);
+CREATE INDEX idx_delivery_due ON notification_deliveries(status,next_attempt_at);
+CREATE INDEX idx_subscription_event ON notification_subscriptions(event_type,destination_id);
 `}}
 
 func (s *Store) Migrate(ctx context.Context) error {

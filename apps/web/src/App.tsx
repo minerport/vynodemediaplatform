@@ -94,7 +94,7 @@ export function App() {
       page === "libraries" ||
       page === "metadata" ||
       page === "automation" ||
-      page === "streams") &&
+      page === "streams" || page === "admin/dashboard" || page === "admin/analytics" || page === "admin/health" || page === "admin/jobs" || page === "admin/notifications") &&
     !admin
   ) {
     history.replaceState({}, "", "/home");
@@ -119,6 +119,16 @@ export function App() {
     <Audit />
   ) : page === "streams" ? (
     <ActiveStreams />
+  ) : page === "admin/dashboard" ? (
+    <AdminDashboardPage go={go}/>
+  ) : page === "admin/analytics" ? (
+    <AnalyticsPage />
+  ) : page === "admin/health" ? (
+    <HealthPage />
+  ) : page === "admin/jobs" ? (
+    <JobsPage />
+  ) : page === "admin/notifications" ? (
+    <NotificationsPage />
   ) : page === "movies" ? (
     <Movies go={go} />
   ) : page.startsWith("movies/") ? (
@@ -168,6 +178,11 @@ export function App() {
           <Nav go={go} page={page} target="settings/home">Home settings</Nav>
           {admin && (
             <>
+              <Nav go={go} page={page} target="admin/dashboard">Dashboard</Nav>
+              <Nav go={go} page={page} target="admin/analytics">Analytics</Nav>
+              <Nav go={go} page={page} target="admin/health">Health</Nav>
+              <Nav go={go} page={page} target="admin/jobs">Jobs</Nav>
+              <Nav go={go} page={page} target="admin/notifications">Webhooks</Nav>
               <Nav go={go} page={page} target="libraries">
                 Libraries
               </Nav>
@@ -221,6 +236,22 @@ export function App() {
             {info?.serverName}
           </div>
         </header>
+        {admin && (
+          <label className="mobile-admin-select">
+            Admin view
+            <select
+              value={page.startsWith("admin/") || page === "streams" ? page : "admin/dashboard"}
+              onChange={(e) => go(e.target.value)}
+            >
+              <option value="admin/dashboard">Dashboard</option>
+              <option value="streams">Active Streams</option>
+              <option value="admin/analytics">Analytics</option>
+              <option value="admin/health">Health</option>
+              <option value="admin/jobs">Jobs</option>
+              <option value="admin/notifications">Webhooks</option>
+            </select>
+          </label>
+        )}
         {content}
       </main>
     </div>
@@ -1314,15 +1345,18 @@ function ActiveStreams() {
       {items.map((x) => (
         <div className="list-row" key={x.id}>
           <div>
-            <strong>{x.title || x.logicalType} · {x.decision.mode.replaceAll("_", " ")}</strong>
+            <strong>{x.userDisplayName || "Unknown user"} · {x.title || x.logicalType}</strong>
             <p>
-              {x.state} · {formatTime(x.position)} / {formatTime(x.duration)} ·{" "}
+              {x.clientName || "Unknown client"}{x.platform && ` on ${x.platform}`} · {x.networkContext || "Unknown network"} · Started {new Date(x.startedAt).toLocaleString()}<br/>
+              {x.decision.mode.replaceAll("_", " ")} · {x.state} · {formatTime(x.position)} / {formatTime(x.duration)} ·{" "}
               {x.selectedVersion?.resolution} {x.selectedVersion?.videoCodec}
+              {x.selectedAudioTrack?.language && <> · Audio {x.selectedAudioTrack.language}</>}
+              {x.selectedSubtitleTrack ? <> · Subtitles {x.selectedSubtitleTrack.language || x.selectedSubtitleTrack.title || "selected"}</> : <> · Subtitles off</>}
               {x.decision.mode !== "DIRECT_PLAY" && <> · Video {x.decision.plan.video.action} · Audio {x.decision.plan.audio.sourceCodec}{x.decision.plan.audio.targetCodec && ` → ${x.decision.plan.audio.targetCodec}`} · {x.decision.plan.container.target}</>}
               {x.decision.mode === "VIDEO_TRANSCODE" && <> · {x.decision.plan.video.sourceCodec?.toUpperCase()} → {x.decision.plan.video.targetCodec?.toUpperCase()} · {x.decision.plan.video.targetHeight}p · {x.decision.plan.backend?.actual || "SOFTWARE"}</>}
             </p>
           </div>
-          <button onClick={() => api.adminStopPlayback(x.id).then(load)}>
+          <button onClick={() => window.confirm("Stop this playback session?") && api.adminStopPlayback(x.id).then(load)}>
             Stop
           </button>
         </div>
@@ -1330,6 +1364,26 @@ function ActiveStreams() {
     </section>
   );
 }
+
+const bytes=(n:number)=>n?`${(n/1073741824).toFixed(1)} GB`:`—`;
+function AdminDashboardPage({go}:{go:(p:string)=>void}){
+  const [d,setD]=useState<import("./api").AdminDashboard|null>(null),[error,setError]=useState("");
+  const load=()=>api.adminDashboard().then(setD).catch(e=>setError(e.message));
+  useEffect(()=>{load();const t=setInterval(load,5000);return()=>clearInterval(t)},[]);
+  if(error)return <section className="panel"><h2>Dashboard</h2><p className="form-error">{error}</p></section>;
+  if(!d)return <section className="panel loading"><div/><div/></section>;
+  const issues=Object.values(d.Health).reduce((a,b)=>a+b,0);
+  return <section className="content admin-console"><div className="admin-heading"><div><p className="eyebrow">OPERATIONS</p><h2>{d.ServerName}</h2></div><button onClick={load}>Refresh</button></div>
+    <div className="metric-grid"><button onClick={()=>go("streams")}><span>Active streams</span><strong>{d.Metrics.ActivePlaybackSessions}</strong><small>{d.Metrics.ActiveFFmpegProcesses} FFmpeg</small></button><button onClick={()=>go("admin/health")}><span>Needs attention</span><strong>{issues}</strong><small>{d.Health.ERROR||0} errors · {d.Health.WARNING||0} warnings</small></button><button onClick={()=>go("admin/jobs")}><span>Failed jobs</span><strong>{d.FailedJobs}</strong><small>Open job history</small></button><div><span>Uptime</span><strong>{Math.floor(d.Metrics.UptimeSeconds/3600)}h</strong><small>{d.Metrics.OperatingSystem} · {d.Metrics.Architecture}</small></div></div>
+    <div className="ops-grid"><section><h3>Server</h3><table><tbody><tr><th>Version</th><td>{d.Version} ({d.Commit})</td></tr><tr><th>Database</th><td>{d.DatabaseType}</td></tr><tr><th>Memory</th><td>{d.Metrics.ProcessRSSBytes?`${bytes(d.Metrics.ProcessRSSBytes)} process RSS · `:""}{bytes(d.Metrics.GoSystemBytes)} Go reserved · {d.Metrics.GoRoutines} goroutines</td></tr><tr><th>System memory</th><td>{d.Metrics.SystemMemoryTotalBytes?`${bytes(d.Metrics.SystemMemoryAvailableBytes)} / ${bytes(d.Metrics.SystemMemoryTotalBytes)} available`:"Not supported on this platform"}</td></tr><tr><th>FFmpeg</th><td className="clip">{d.FFmpegVersion}</td></tr><tr><th>FFprobe</th><td className="clip">{d.FFprobeVersion}</td></tr></tbody></table></section>
+    <section><h3>Library</h3><table><tbody><tr><th>Logical</th><td>{d.Libraries.Movies} movies · {d.Libraries.Shows} shows · {d.Libraries.Episodes} episodes</td></tr><tr><th>Physical</th><td>{d.Libraries.AvailableFiles}/{d.Libraries.PhysicalFiles} available</td></tr><tr><th>Missing</th><td>{d.Libraries.MissingFiles}</td></tr><tr><th>Unmatched</th><td>{d.Libraries.UnmatchedFiles}</td></tr><tr><th>Optimized</th><td>{d.Libraries.OptimizedVersions}</td></tr></tbody></table></section>
+    <section><h3>Storage</h3>{d.Metrics.Disks.length?d.Metrics.Disks.map(x=><div className="storage-row" key={x.Label}><strong>{x.Label}</strong><progress value={x.UsedBytes} max={x.TotalBytes}/><span>{bytes(x.AvailableBytes)} free</span></div>):<p>No measurable configured filesystems.</p>}</section>
+    <section><h3>Recent activity</h3>{d.RecentEvents.length?d.RecentEvents.map(x=><div className="event-row" key={x.ID}><b className={`severity ${x.Severity.toLowerCase()}`}>{x.Severity}</b><span>{x.Type.replaceAll("_"," ")}</span><time>{new Date(x.CreatedAt).toLocaleString()}</time></div>):<p>No operational events yet.</p>}</section></div></section>
+}
+function AnalyticsPage(){const [days,setDays]=useState(7),[x,setX]=useState<import("./api").PlaybackAnalytics|null>(null);useEffect(()=>{api.playbackAnalytics(days).then(setX)},[days]);return <section className="content admin-console"><div className="admin-heading"><h2>Playback analytics</h2><select value={days} onChange={e=>setDays(Number(e.target.value))}><option value="1">Today</option><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option></select></div>{x&&<><div className="metric-grid"><div><span>Plays</span><strong>{x.TotalPlays}</strong></div><div><span>Playback time</span><strong>{Math.round(x.PlaybackSeconds/3600)}h</strong></div><div><span>Users</span><strong>{x.UniqueUsers}</strong></div><div><span>Errors</span><strong>{x.PlaybackErrors}</strong></div></div><div className="ops-grid"><section><h3>Delivery modes</h3>{Object.entries(x.Modes).map(([k,n])=><div className="bar-row" key={k}><span>{k.replaceAll("_"," ")}</span><progress value={n} max={Math.max(1,x.TotalPlays)}/><b>{n}</b></div>)}</section><section><h3>Completion</h3><table><tbody><tr><th>Completed</th><td>{x.CompletionCount}</td></tr><tr><th>Movies</th><td>{x.MoviesPlayed}</td></tr><tr><th>Episodes</th><td>{x.EpisodesPlayed}</td></tr></tbody></table></section><section><h3>Top media</h3>{x.TopMedia.map(i=><div className="event-row" key={i.Key}><span>{i.Label}</span><b>{i.Count}</b></div>)}</section><section><h3>Top users</h3>{x.TopUsers.map(i=><div className="event-row" key={i.Key}><span>{i.Label}</span><b>{i.Count}</b></div>)}</section></div></>}</section>}
+function HealthPage(){const [items,setItems]=useState<import("./api").HealthIssue[]>([]),[busy,setBusy]=useState(false);const load=()=>api.healthIssues().then(x=>setItems(x.issues));useEffect(()=>{load()},[]);const scan=()=>{setBusy(true);api.reevaluateHealth().then(x=>setItems(x.issues)).finally(()=>setBusy(false))};return <section className="content admin-console"><div className="admin-heading"><div><h2>Library health</h2><p>Detected local conditions, with source-offline suppression.</p></div><button disabled={busy} onClick={scan}>{busy?"Evaluating…":"Reevaluate health"}</button></div><div className="filter-line"><span>{items.filter(x=>x.Status==="OPEN").length} open</span><span>{items.filter(x=>x.Status==="IGNORED").length} ignored</span><span>{items.filter(x=>x.Status==="RESOLVED").length} resolved</span></div><div className="ops-table"><table><thead><tr><th>Severity</th><th>Category</th><th>Description</th><th>Status</th><th>Detected</th><th/></tr></thead><tbody>{items.map(x=><tr key={x.ID}><td><b className={`severity ${x.Severity.toLowerCase()}`}>{x.Severity}</b></td><td>{x.Category.replaceAll("_"," ")}</td><td>{x.Description}</td><td>{x.Status}</td><td>{new Date(x.LastDetectedAt).toLocaleString()}</td><td>{x.Status!=="RESOLVED"&&<button onClick={()=>api.setHealthIgnored(x.ID,x.Status!=="IGNORED").then(load)}>{x.Status==="IGNORED"?"Unignore":"Ignore"}</button>}</td></tr>)}</tbody></table></div>{!items.length&&<p>No health issues detected.</p>}</section>}
+function JobsPage(){const [items,setItems]=useState<import("./api").AdminJob[]>([]);const load=()=>api.adminJobs().then(x=>setItems(x.jobs));useEffect(()=>{load();const t=setInterval(load,5000);return()=>clearInterval(t)},[]);return <section className="content admin-console"><div className="admin-heading"><h2>Background jobs</h2><button onClick={load}>Refresh</button></div><div className="ops-table"><table><thead><tr><th>Type</th><th>Target</th><th>Status</th><th>Progress</th><th>Started</th><th>Duration / error</th></tr></thead><tbody>{items.map(x=><tr key={`${x.Type}-${x.ID}`}><td>{x.Type}</td><td className="mono">{x.Target}</td><td>{x.State}</td><td><progress value={x.Progress} max="1"/> {Math.round(x.Progress*100)}%</td><td>{x.StartedAt?new Date(x.StartedAt).toLocaleString():"Queued"}</td><td>{x.Error||x.CompletedAt&&new Date(x.CompletedAt).toLocaleString()||"—"}</td></tr>)}</tbody></table></div>{!items.length&&<p>No background jobs.</p>}</section>}
+function NotificationsPage(){const [items,setItems]=useState<import("./api").WebhookDestination[]>([]),[deliveries,setDeliveries]=useState<import("./api").WebhookDelivery[]>([]),[catalog,setCatalog]=useState<Record<string,{Type:string;Category:string;Severity:string}>>({}),[message,setMessage]=useState("");const load=()=>Promise.all([api.webhookDestinations().then(x=>setItems(x.destinations)),api.webhookDeliveries().then(x=>setDeliveries(x.deliveries)),api.webhookCatalog().then(x=>setCatalog(x.events))]);useEffect(()=>{load()},[]);const save=(e:FormEvent<HTMLFormElement>)=>{e.preventDefault();const f=e.currentTarget,d=new FormData(f),events=[...d.getAll("events")].map(String);api.saveWebhook({Name:String(d.get("name")),URL:String(d.get("url")),Enabled:true,AllowPrivateNetwork:d.get("private")==="on",AllowInsecureHTTP:d.get("http")==="on",MaxAttempts:Number(d.get("attempts")),EventTypes:events,Secret:String(d.get("secret"))}).then(()=>{f.reset();setMessage("Webhook saved.");load()}).catch(e=>setMessage(e.message))};const groups=Object.entries(catalog).reduce<Record<string,string[]>>((a,[k,v])=>{(a[v.Category]??=[]).push(k);return a},{});return <section className="content admin-console"><h2>Notifications & webhooks</h2><p>Provider-neutral, signed event delivery. Public HTTPS destinations are the safe default.</p><div className="ops-grid"><section><h3>Add webhook</h3><form onSubmit={save}><label>Name<input name="name" required/></label><label>Destination URL<input name="url" type="url" required placeholder="https://hooks.example.net/vynode"/></label><label>Signing secret<input name="secret" type="password" autoComplete="new-password"/></label><label>Attempts<select name="attempts" defaultValue="3"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></label><label className="check"><input name="private" type="checkbox"/> Allow private/LAN destinations (SSRF-sensitive)</label><label className="check"><input name="http" type="checkbox"/> Allow insecure HTTP</label>{Object.entries(groups).map(([g,events])=><fieldset key={g}><legend>{g}</legend>{events.map(t=><label className="check" key={t}><input type="checkbox" name="events" value={t}/>{t.replaceAll("_"," ")}</label>)}</fieldset>)}<button>Save webhook</button><p>{message}</p></form></section><section><h3>Destinations</h3>{items.map(x=><div className="list-row" key={x.ID}><div><strong>{x.Name}</strong><p>{x.URL}<br/>{x.Enabled?"Enabled":"Disabled"} · {x.EventTypes.length} subscriptions · secret {x.HasSecret?"set":"not set"}</p></div><span><button onClick={()=>api.testWebhook(x.ID!).then(()=>{setMessage("Test queued.");setTimeout(load,1500)})}>Test</button><button onClick={()=>confirm(`Delete ${x.Name}?`)&&api.deleteWebhook(x.ID!).then(load)}>Delete</button></span></div>)}</section></div><h3>Delivery history</h3><div className="ops-table"><table><thead><tr><th>Event</th><th>Destination</th><th>Status</th><th>Attempts</th><th>HTTP</th><th>Time / diagnostic</th></tr></thead><tbody>{deliveries.map(x=><tr key={x.ID}><td>{x.EventType}</td><td>{x.DestinationName}</td><td>{x.Status}</td><td>{x.AttemptCount}</td><td>{x.LastHTTPStatus||"—"}</td><td>{new Date(x.CreatedAt).toLocaleString()} {x.LastError&&`· ${x.LastError}`}</td></tr>)}</tbody></table></div></section>}
 
 function ArtworkImage({
   kind,

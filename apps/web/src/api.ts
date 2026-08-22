@@ -255,6 +255,11 @@ export type PlaybackSession = {
   position: number;
   duration: number;
   resumePosition: number;
+  startedAt: string;
+  lastActivityAt: string;
+  userDisplayName?: string;
+  clientName?: string;
+  platform?: string;
   mediaUrl?: string;
   hlsUrl?: string;
   availableQualities?: Array<{id:string;label:string;maxWidth:number;maxHeight:number;targetVideoBitrate:number}>;
@@ -280,6 +285,14 @@ export type RuleNode={logic?:"ALL"|"ANY"|"NOT";children?:RuleNode[];field?:strin
 export type SmartCollection={ID?:string;Name:string;Description:string;Scope:"SERVER_SHARED"|"USER_PRIVATE";OwnerUserID?:string;RuleSchemaVersion:number;Rule:RuleNode;SortField:string;SortDirection:"ASC"|"DESC";Limit:number;ArtworkItemType?:string;ArtworkItemID?:string;Items?:CurationItem[]};
 export type Playlist={ID:string;Name:string;Description:string;Items:CurationItem[]};
 export type HomeRow={ID:string;Type:string;Title:string;SourceID:string;Enabled:boolean;Position:number;Limit:number;Items:CurationItem[];SeeAll:string};
+export type OpsEvent={ID:string;Type:string;Category:string;Severity:string;CreatedAt:string;Payload:Record<string,unknown>};
+export type HealthIssue={ID:string;Category:string;Severity:string;ReferenceType:string;ReferenceID:string;Description:string;Status:string;FirstDetectedAt:string;LastDetectedAt:string};
+export type DiskMetric={Label:string;Path:string;TotalBytes:number;UsedBytes:number;AvailableBytes:number};
+export type AdminDashboard={Version:string;Commit:string;ServerName:string;InstanceID:string;DatabaseType:string;FFmpegVersion:string;FFprobeVersion:string;Metrics:{UptimeSeconds:number;OperatingSystem:string;Architecture:string;GoRoutines:number;GoHeapBytes:number;GoSystemBytes:number;ProcessRSSBytes:number;SystemMemoryTotalBytes:number;SystemMemoryAvailableBytes:number;Disks:DiskMetric[];ActivePlaybackSessions:number;ActiveFFmpegProcesses:number};Health:Record<string,number>;Libraries:{Movies:number;Shows:number;Episodes:number;PhysicalFiles:number;AvailableFiles:number;MissingFiles:number;UnmatchedFiles:number;OptimizedVersions:number;Resolution:Record<string,number>;VideoCodecs:Record<string,number>;HDR:Record<string,number>};FailedJobs:number;RecentEvents:OpsEvent[]};
+export type PlaybackAnalytics={From:string;To:string;TotalPlays:number;UniqueUsers:number;MoviesPlayed:number;EpisodesPlayed:number;PlaybackErrors:number;CompletionCount:number;PlaybackSeconds:number;Modes:Record<string,number>;TopMedia:Array<{Key:string;Label:string;Count:number}>;TopUsers:Array<{Key:string;Label:string;Count:number}>};
+export type AdminJob={ID:string;Type:string;Target:string;State:string;Progress:number;Priority:number;CreatedAt:string;StartedAt:string;CompletedAt:string;Error:string};
+export type WebhookDestination={ID?:string;Name:string;URL:string;Enabled:boolean;AllowPrivateNetwork:boolean;AllowInsecureHTTP:boolean;HasSecret?:boolean;MaxAttempts:number;EventTypes:string[];Secret?:string};
+export type WebhookDelivery={ID:string;EventID:string;EventType:string;DestinationID:string;DestinationName:string;Status:string;AttemptCount:number;LastHTTPStatus:number;LastError:string;CreatedAt:string};
 export type ContinueItem = {
   logicalType: "MOVIE" | "EPISODE";
   logicalId: string;
@@ -618,6 +631,20 @@ export const api = {
     }),
   activePlayback: () =>
     call<{ sessions: PlaybackSession[] }>("/api/v1/admin/playback/sessions"),
+  adminDashboard:()=>call<AdminDashboard>("/api/v1/admin/dashboard"),
+  playbackAnalytics:(days=7)=>{const to=new Date(),from=new Date(to.getTime()-days*86400000);return call<PlaybackAnalytics>(`/api/v1/admin/analytics/playback?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`)},
+  personalHistory:(days=30)=>{const to=new Date(),from=new Date(to.getTime()-days*86400000);return call<PlaybackAnalytics>(`/api/v1/account/playback-history/summary?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`)},
+  adminJobs:()=>call<{jobs:AdminJob[]}>("/api/v1/admin/jobs?limit=100"),
+  healthIssues:(status="")=>call<{issues:HealthIssue[]}>(`/api/v1/admin/health/issues${status?`?status=${status}`:""}`),
+  reevaluateHealth:()=>call<{issues:HealthIssue[]}>("/api/v1/admin/health/reevaluate",{method:"POST"}),
+  setHealthIgnored:(id:string,on:boolean)=>call<void>(`/api/v1/admin/health/issues/${id}/ignored`,{method:on?"PUT":"DELETE"}),
+  operationalEvents:()=>call<{events:OpsEvent[]}>("/api/v1/admin/operational-events?limit=50"),
+  webhookCatalog:()=>call<{events:Record<string,{Type:string;Category:string;Severity:string}>}>("/api/v1/admin/notifications/catalog"),
+  webhookDestinations:()=>call<{destinations:WebhookDestination[]}>("/api/v1/admin/notifications/destinations"),
+  saveWebhook:(x:WebhookDestination)=>call<WebhookDestination>(x.ID?`/api/v1/admin/notifications/destinations/${x.ID}`:"/api/v1/admin/notifications/destinations",{method:x.ID?"PATCH":"POST",body:JSON.stringify(x)}),
+  deleteWebhook:(id:string)=>call<void>(`/api/v1/admin/notifications/destinations/${id}`,{method:"DELETE"}),
+  testWebhook:(id:string)=>call<void>(`/api/v1/admin/notifications/destinations/${id}/test`,{method:"POST"}),
+  webhookDeliveries:()=>call<{deliveries:WebhookDelivery[]}>("/api/v1/admin/notifications/deliveries?limit=50"),
   adminStopPlayback: (id: string) =>
     call<void>(`/api/v1/admin/playback/sessions/${id}`, { method: "DELETE" }),
   logout: () =>

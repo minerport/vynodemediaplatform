@@ -12,6 +12,8 @@ Metadata credentials are accepted only by capability-gated owner/admin routes, s
 
 Passwords are Argon2id hashes. Tokens, passwords, hashes, and authorization headers are excluded from API errors, audit metadata, and request logs. Refresh digests and append-oriented audit rows live in SQLite; the signing key is a restrictive file under `/config`. No secrets are baked into images.
 
+Observability APIs require OWNER/ADMIN capabilities; ordinary users can access only their principal-derived playback summary. Physical storage paths remain admin-only. Webhook URLs are re-resolved at configuration and delivery, public HTTPS is the default, redirects are disabled, dangerous IP classes remain blocked, response reads are bounded, and optional HMAC secrets are encrypted locally and never returned. VyNode sends no cloud telemetry.
+
 Browser refresh uses an HttpOnly SameSite=Strict cookie, Secure on HTTPS, with a narrow auth path. Access credentials remain in memory. Unsafe requests with an Origin must match the request origin or exact configured `VYNODE_ALLOWED_ORIGIN`; wildcards and malformed origins are rejected. Preflight responses are restricted and credentialed wildcard CORS is never emitted. This combines SameSite with Origin-based CSRF defense.
 
 The socket peer address drives throttling and audit context. `Forwarded`, `X-Forwarded-For`, and `X-Real-IP` are ignored; trusted proxy ranges are not implemented. Authentication endpoints allow ten attempts per peer per rolling minute and recover automatically.
