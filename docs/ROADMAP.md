@@ -10,7 +10,7 @@ Phase 5 provides Direct Stream, audio-only transcoding, text subtitles, supervis
 | 3 — Metadata and artwork | Logical movies/TV, deterministic TMDb identification, credits/companies, provenance, persistent artwork cache | Complete: authenticated local-first browsing and offline artwork without playback |
 | 4 — Direct Play | Capability profiles, explainable selection, sessions, ranges, progress, browser player | Complete: compatible originals play without conversion |
 | 5 — Playback pipeline | Direct Stream/remux, FFmpeg pipeline, audio conversion, subtitle delivery | Expanded browser compatibility with tested reasons |
-| 6 — Android ecosystem | Compose phone/tablet and TV clients with Media3 | Native Android and couch playback |
+| 6 — Video transcoding | Software H.264, authenticated fMP4 HLS, quality policy, resource limits, hardware discovery | Validated Chromium HEVC-to-H.264 playback without regressing cheaper modes |
 | 7 — Operations and remote | Windows Service/installer, Unraid publication, remote modes, observability | Maintainable deployments |
 | 8 — Expanded media | Music, photos, audiobooks, books/comics, downloads, casting | Broader media coverage |
 | 9 — Live/collaboration | Live TV/DVR, watch-together, plugins, notifications/webhooks | Advanced ecosystem capabilities |

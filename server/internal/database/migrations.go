@@ -96,6 +96,28 @@ CREATE TABLE sidecar_subtitles (id TEXT PRIMARY KEY,media_file_id TEXT NOT NULL,
 CREATE INDEX idx_playback_active ON playback_sessions(state,last_activity_at);
 CREATE INDEX idx_playback_user ON playback_sessions(user_id,started_at DESC);
 CREATE INDEX idx_pipeline_session ON playback_pipeline_instances(playback_session_id,started_at DESC);
+`}, {8, "video_transcoding", `
+CREATE TABLE playback_history_phase5 AS SELECT * FROM playback_history;
+CREATE TABLE playback_pipeline_phase5 AS SELECT * FROM playback_pipeline_instances;
+DROP TABLE playback_history;
+DROP TABLE playback_pipeline_instances;
+ALTER TABLE playback_sessions RENAME TO playback_sessions_phase5;
+CREATE TABLE playback_sessions (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,auth_session_id TEXT NOT NULL,capability_id TEXT NOT NULL,logical_type TEXT NOT NULL CHECK(logical_type IN ('MOVIE','EPISODE')),logical_id TEXT NOT NULL,media_association_id TEXT,media_file_id TEXT,mode TEXT NOT NULL CHECK(mode IN ('DIRECT_PLAY','DIRECT_STREAM','AUDIO_TRANSCODE','VIDEO_TRANSCODE','UNSUPPORTED')),state TEXT NOT NULL CHECK(state IN ('STARTING','PLAYING','PAUSED','STOPPED','COMPLETED','ERROR')),position_seconds REAL NOT NULL DEFAULT 0,duration_seconds REAL NOT NULL DEFAULT 0,started_at TEXT NOT NULL,last_activity_at TEXT NOT NULL,ended_at TEXT,completion_reason TEXT,error_code TEXT,media_token_hash TEXT,media_token_expires_at TEXT,bytes_served INTEGER NOT NULL DEFAULT 0,selected_audio_track_id TEXT,selected_subtitle_track_id TEXT,pipeline_plan_json TEXT NOT NULL DEFAULT '{}',FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,FOREIGN KEY(auth_session_id) REFERENCES sessions(id) ON DELETE CASCADE,FOREIGN KEY(capability_id) REFERENCES client_capabilities(id),FOREIGN KEY(media_association_id) REFERENCES media_associations(id) ON DELETE SET NULL,FOREIGN KEY(media_file_id) REFERENCES media_files(id) ON DELETE SET NULL);
+INSERT INTO playback_sessions SELECT * FROM playback_sessions_phase5;
+DROP TABLE playback_sessions_phase5;
+CREATE TABLE playback_history (id INTEGER PRIMARY KEY AUTOINCREMENT,playback_session_id TEXT NOT NULL,user_id TEXT NOT NULL,event_type TEXT NOT NULL,position_seconds REAL NOT NULL DEFAULT 0,created_at TEXT NOT NULL,FOREIGN KEY(playback_session_id) REFERENCES playback_sessions(id) ON DELETE CASCADE,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
+INSERT INTO playback_history SELECT * FROM playback_history_phase5;
+DROP TABLE playback_history_phase5;
+CREATE TABLE playback_pipeline_instances (id TEXT PRIMARY KEY,playback_session_id TEXT NOT NULL,state TEXT NOT NULL CHECK(state IN ('STARTING','RUNNING','STOPPING','STOPPED','FAILED')),mode TEXT NOT NULL CHECK(mode IN ('DIRECT_STREAM','AUDIO_TRANSCODE','VIDEO_TRANSCODE')),start_seconds REAL NOT NULL DEFAULT 0,started_at TEXT NOT NULL,running_at TEXT,ended_at TEXT,startup_ms INTEGER,error_code TEXT,safe_diagnostic TEXT,FOREIGN KEY(playback_session_id) REFERENCES playback_sessions(id) ON DELETE CASCADE);
+INSERT INTO playback_pipeline_instances SELECT * FROM playback_pipeline_phase5;
+DROP TABLE playback_pipeline_phase5;
+CREATE TABLE transcode_sessions (id TEXT PRIMARY KEY,playback_session_id TEXT NOT NULL UNIQUE,state TEXT NOT NULL CHECK(state IN ('STARTING','RUNNING','STOPPED','FAILED')),backend TEXT NOT NULL,quality_id TEXT NOT NULL,target_width INTEGER,target_height INTEGER,target_bitrate INTEGER,encoded_seconds REAL NOT NULL DEFAULT 0,speed REAL NOT NULL DEFAULT 0,output_bytes INTEGER NOT NULL DEFAULT 0,owned_directory TEXT NOT NULL,started_at TEXT NOT NULL,ended_at TEXT,error_code TEXT,FOREIGN KEY(playback_session_id) REFERENCES playback_sessions(id) ON DELETE CASCADE);
+CREATE TABLE transcode_backend_status (backend TEXT PRIMARY KEY,detected INTEGER NOT NULL,available INTEGER NOT NULL,encoder TEXT,decoder TEXT,diagnostic TEXT,checked_at TEXT NOT NULL);
+CREATE TABLE user_quality_preferences (user_id TEXT PRIMARY KEY,remote_quality_id TEXT NOT NULL DEFAULT 'auto',remote_bitrate_limit INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
+CREATE INDEX idx_playback_active ON playback_sessions(state,last_activity_at);
+CREATE INDEX idx_playback_user ON playback_sessions(user_id,started_at DESC);
+CREATE INDEX idx_pipeline_session ON playback_pipeline_instances(playback_session_id,started_at DESC);
+CREATE INDEX idx_transcode_state ON transcode_sessions(state,started_at);
 `}}
 
 func (s *Store) Migrate(ctx context.Context) error {

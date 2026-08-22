@@ -18,19 +18,28 @@ import (
 )
 
 var (
-	ErrNotFound    = errors.New("not found")
-	ErrForbidden   = errors.New("forbidden")
-	ErrValidation  = errors.New("validation")
-	ErrUnavailable = errors.New("media unavailable")
-	ErrStale       = errors.New("stale inventory")
-	ErrExpired     = errors.New("playback authorization expired")
+	ErrNotFound         = errors.New("not found")
+	ErrForbidden        = errors.New("forbidden")
+	ErrValidation       = errors.New("validation")
+	ErrUnavailable      = errors.New("media unavailable")
+	ErrStale            = errors.New("stale inventory")
+	ErrExpired          = errors.New("playback authorization expired")
+	ErrVideoCapacity    = errors.New("video transcode capacity reached")
+	ErrTranscodeStorage = errors.New("transcode storage unavailable")
 )
 
 type Service struct {
-	db         *sql.DB
-	now        func() time.Time
-	inactivity time.Duration
-	pipeline   *FFmpegPipeline
+	db            *sql.DB
+	now           func() time.Time
+	inactivity    time.Duration
+	pipeline      *FFmpegPipeline
+	hls           *HLSManager
+	remoteBitrate int64
+}
+
+func (s *Service) ConfigureVideo(h *HLSManager, remoteBitrate int64) {
+	s.hls = h
+	s.remoteBitrate = remoteBitrate
 }
 
 func New(db *sql.DB, pipeline ...*FFmpegPipeline) *Service {
@@ -57,7 +66,7 @@ func (s *Service) Start(ctx context.Context, userID, authSessionID string, in St
 	if in.LogicalType != "MOVIE" && in.LogicalType != "EPISODE" {
 		return Session{}, ErrValidation
 	}
-	if in.LogicalID == "" || (in.Capabilities.SchemaVersion != 1 && in.Capabilities.SchemaVersion != 2) || in.Capabilities.ClientName == "" || len(in.Capabilities.Containers) > 20 || len(in.Capabilities.VideoCodecs) > 20 || len(in.Capabilities.AudioCodecs) > 30 || in.Capabilities.MaxAudioChannels < 0 || in.Capabilities.MaxAudioChannels > 16 {
+	if in.LogicalID == "" || (in.Capabilities.SchemaVersion != 1 && in.Capabilities.SchemaVersion != 2) || in.Capabilities.ClientName == "" || len(in.Capabilities.Containers) > 20 || len(in.Capabilities.VideoCodecs) > 20 || len(in.Capabilities.AudioCodecs) > 30 || in.Capabilities.MaxAudioChannels < 0 || in.Capabilities.MaxAudioChannels > 16 || in.StartPosition < 0 || in.StartPosition > 7*24*60*60 {
 		return Session{}, ErrValidation
 	}
 	var active int
@@ -68,12 +77,19 @@ func (s *Service) Start(ctx context.Context, userID, authSessionID string, in St
 	if err != nil {
 		return Session{}, err
 	}
-	selected, decision := SelectTracks(versions, in.Capabilities, in.RequestedVersionID, in.SelectedAudioTrackID, in.SelectedSubtitleTrackID)
+	limit := in.BandwidthLimit
+	if in.Network == NetworkRemote && limit <= 0 {
+		limit = s.remoteBitrate
+	}
+	selected, decision := SelectPolicy(versions, in.Capabilities, in.RequestedVersionID, in.SelectedAudioTrackID, in.SelectedSubtitleTrackID, in.QualityID, limit)
 	if decision.Mode != DirectPlay && decision.Mode != Unsupported && (s.pipeline == nil || !s.pipeline.Available()) {
 		decision = reject(decision, "FFMPEG_UNAVAILABLE", "")
 	}
 	if decision.Mode == AudioTranscode && !contains(s.pipeline.Capabilities().Encoders, "aac") {
 		decision = reject(decision, "AUDIO_ENCODER_UNAVAILABLE", "aac")
+	}
+	if decision.Mode == VideoTranscode && (s.hls == nil || !contains(s.pipeline.Capabilities().Encoders, "libx264")) {
+		decision = reject(decision, "VIDEO_ENCODER_UNAVAILABLE", "libx264")
 	}
 	now := s.now().UTC()
 	capID := id()
@@ -101,6 +117,12 @@ func (s *Service) Start(ctx context.Context, userID, authSessionID string, in St
 		_ = tx.QueryRowContext(ctx, "SELECT position_seconds,watched FROM user_media_progress WHERE user_id=? AND logical_type=? AND logical_id=?", userID, in.LogicalType, in.LogicalID).Scan(&resume, &watched)
 		if resume < 30 || watched || (duration > 0 && resume >= duration*.9) {
 			resume = 0
+		}
+	}
+	if in.StartPosition > 0 {
+		resume = in.StartPosition
+		if duration > 0 && resume > duration {
+			resume = duration
 		}
 	}
 	state := Starting
@@ -131,6 +153,11 @@ func (s *Service) Start(ctx context.Context, userID, authSessionID string, in St
 	out := Session{ID: sessionID, UserID: userID, LogicalType: in.LogicalType, LogicalID: in.LogicalID, MediaVersion: selected, Decision: decision, State: state, Position: resume, Duration: duration, ResumePosition: resume, StartedAt: stamp(now), LastActivityAt: stamp(now)}
 	if decision.Mode != Unsupported {
 		out.MediaURL = "/api/v1/playback/sessions/" + sessionID + "/media?token=" + token
+	}
+	if decision.Mode == VideoTranscode {
+		out.HLSURL = "/api/v1/playback/sessions/" + sessionID + "/hls/master.m3u8?token=" + token
+		out.MediaURL = ""
+		out.Qualities = QualityProfiles(selected)
 	}
 	if in.SelectedSubtitleTrackID != "" && decision.Mode != Unsupported {
 		out.SubtitleURL = "/api/v1/playback/sessions/" + sessionID + "/subtitles/" + in.SelectedSubtitleTrackID
@@ -215,6 +242,9 @@ func (s *Service) Versions(ctx context.Context, kind, logicalID string) ([]Versi
 func (s *Service) Close() {
 	if s.pipeline != nil {
 		s.pipeline.Close()
+	}
+	if s.hls != nil {
+		s.hls.Close()
 	}
 }
 func textSubtitle(codec string) bool {
@@ -310,6 +340,11 @@ func (s *Service) Update(ctx context.Context, userID, sessionID string, p Progre
 		if s.pipeline != nil {
 			s.pipeline.Cancel(sessionID)
 		}
+		if s.hls != nil {
+			s.hls.Cancel(sessionID)
+		}
+		_, _ = s.db.ExecContext(ctx, "UPDATE transcode_sessions SET state='STOPPED',ended_at=? WHERE playback_session_id=? AND state IN ('STARTING','RUNNING')", stamp(now), sessionID)
+		_, _ = s.db.ExecContext(ctx, "UPDATE playback_pipeline_instances SET state='STOPPED',ended_at=? WHERE playback_session_id=? AND state IN ('STARTING','RUNNING','STOPPING')", stamp(now), sessionID)
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -376,7 +411,7 @@ func (s *Service) AuthorizeMedia(ctx context.Context, sessionID, token string) (
 	var root, rel string
 	var storedSize, storedMtime int64
 	var state, expiry, mode, planJSON string
-	err := s.db.QueryRowContext(ctx, `SELECT src.normalized_path,f.relative_path,f.size_bytes,f.modified_at_ns,p.state,p.media_token_expires_at,f.extension,p.mode,p.pipeline_plan_json,COALESCE(ms.stream_index,-1) FROM playback_sessions p JOIN media_files f ON f.id=p.media_file_id JOIN library_sources src ON src.id=f.source_id JOIN sessions s ON s.id=p.auth_session_id JOIN users u ON u.id=p.user_id LEFT JOIN media_streams ms ON ms.id=p.selected_audio_track_id WHERE p.id=? AND p.mode IN ('DIRECT_PLAY','DIRECT_STREAM','AUDIO_TRANSCODE') AND p.media_token_hash=? AND f.availability='AVAILABLE' AND s.revoked_at IS NULL AND s.expires_at>? AND u.status='ACTIVE'`, sessionID, hex.EncodeToString(sum[:]), stamp(s.now())).Scan(&root, &rel, &storedSize, &storedMtime, &state, &expiry, &a.MIME, &mode, &planJSON, &a.AudioStreamIndex)
+	err := s.db.QueryRowContext(ctx, `SELECT src.normalized_path,f.relative_path,f.size_bytes,f.modified_at_ns,p.state,p.media_token_expires_at,f.extension,p.mode,p.pipeline_plan_json,COALESCE(ms.stream_index,-1) FROM playback_sessions p JOIN media_files f ON f.id=p.media_file_id JOIN library_sources src ON src.id=f.source_id JOIN sessions s ON s.id=p.auth_session_id JOIN users u ON u.id=p.user_id LEFT JOIN media_streams ms ON ms.id=p.selected_audio_track_id WHERE p.id=? AND p.mode IN ('DIRECT_PLAY','DIRECT_STREAM','AUDIO_TRANSCODE','VIDEO_TRANSCODE') AND p.media_token_hash=? AND f.availability='AVAILABLE' AND s.revoked_at IS NULL AND s.expires_at>? AND u.status='ACTIVE'`, sessionID, hex.EncodeToString(sum[:]), stamp(s.now())).Scan(&root, &rel, &storedSize, &storedMtime, &state, &expiry, &a.MIME, &mode, &planJSON, &a.AudioStreamIndex)
 	if err != nil {
 		return a, ErrForbidden
 	}
@@ -443,6 +478,55 @@ func (s *Service) StreamGenerated(ctx context.Context, a MediaAccess, start floa
 	_, _ = s.db.Exec("UPDATE playback_pipeline_instances SET state=?,ended_at=?,error_code=?,safe_diagnostic=? WHERE id=?", state, stamp(s.now()), null(res.Code), truncate(res.Stderr, 32768), instance)
 	return e
 }
+func (s *Service) HLSFile(ctx context.Context, sessionID, token, name string) (string, error) {
+	a, e := s.AuthorizeMedia(ctx, sessionID, token)
+	if e != nil {
+		return "", e
+	}
+	if a.Mode != VideoTranscode {
+		return "", ErrValidation
+	}
+	if s.hls == nil {
+		return "", ErrPipelineUnavailable
+	}
+	var count int
+	_ = s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM transcode_sessions WHERE playback_session_id=?", sessionID).Scan(&count)
+	if count == 0 {
+		progress := func(encoded, speed float64, outputBytes int64) {
+			_, _ = s.db.Exec("UPDATE transcode_sessions SET encoded_seconds=?,speed=?,output_bytes=? WHERE playback_session_id=? AND state='RUNNING'", encoded, speed, outputBytes, sessionID)
+		}
+		done := func(runErr error) {
+			state, pipelineState := "STOPPED", PipelineStopped
+			if runErr != nil {
+				state, pipelineState = "FAILED", PipelineFailed
+			}
+			now := stamp(s.now())
+			_, _ = s.db.Exec("UPDATE transcode_sessions SET state=?,ended_at=?,error_code=? WHERE playback_session_id=? AND state='RUNNING'", state, now, func() any {
+				if runErr != nil {
+					return "FFMPEG_EXITED"
+				}
+				return nil
+			}(), sessionID)
+			_, _ = s.db.Exec("UPDATE playback_pipeline_instances SET state=?,ended_at=?,error_code=? WHERE playback_session_id=? AND mode=? AND state='RUNNING'", pipelineState, now, func() any {
+				if runErr != nil {
+					return "FFMPEG_EXITED"
+				}
+				return nil
+			}(), sessionID, VideoTranscode)
+		}
+		if e = s.hls.Ensure(HLSRequest{SessionID: sessionID, SourcePath: a.Path, AudioStreamIndex: a.AudioStreamIndex, Plan: a.Plan, Progress: progress, Done: done}); e != nil {
+			return "", e
+		}
+		now := stamp(s.now())
+		_, e = s.db.ExecContext(ctx, "INSERT INTO transcode_sessions(id,playback_session_id,state,backend,quality_id,target_width,target_height,target_bitrate,owned_directory,started_at) VALUES(?,?,?,?,?,?,?,?,?,?)", id(), sessionID, "RUNNING", a.Plan.Backend.Actual, a.Plan.Quality, a.Plan.Video.TargetWidth, a.Plan.Video.TargetHeight, a.Plan.Video.TargetBitrate, sessionID, now)
+		if e != nil {
+			s.hls.Cancel(sessionID)
+			return "", e
+		}
+		_, _ = s.db.ExecContext(ctx, "INSERT INTO playback_pipeline_instances(id,playback_session_id,state,mode,start_seconds,started_at,running_at) VALUES(?,?,?,?,?,?,?)", id(), sessionID, PipelineRunning, VideoTranscode, 0, now, now)
+	}
+	return s.hls.File(sessionID, name)
+}
 func (s *Service) monitorAuthorization(ctx context.Context, cancel context.CancelFunc, sessionID string) {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
@@ -470,7 +554,11 @@ func (s *Service) Capabilities() FFmpegCapabilities {
 	if s.pipeline == nil {
 		return FFmpegCapabilities{Muxers: []string{}, Encoders: []string{}, Decoders: []string{}}
 	}
-	return s.pipeline.Capabilities()
+	c := s.pipeline.Capabilities()
+	if s.hls != nil {
+		c.ActiveVideo, c.MaximumVideo = s.hls.Active()
+	}
+	return c
 }
 func (s *Service) Subtitle(ctx context.Context, sessionID, token, trackID string) ([]byte, error) {
 	a, e := s.AuthorizeMedia(ctx, sessionID, token)
@@ -580,6 +668,11 @@ func (s *Service) AdminStop(ctx context.Context, id string) error {
 	if s.pipeline != nil {
 		s.pipeline.Cancel(id)
 	}
+	if s.hls != nil {
+		s.hls.Cancel(id)
+	}
+	_, _ = s.db.ExecContext(ctx, "UPDATE transcode_sessions SET state='STOPPED',ended_at=? WHERE playback_session_id=? AND state IN ('STARTING','RUNNING')", stamp(s.now()), id)
+	_, _ = s.db.ExecContext(ctx, "UPDATE playback_pipeline_instances SET state='STOPPED',ended_at=? WHERE playback_session_id=? AND state IN ('STARTING','RUNNING','STOPPING')", stamp(s.now()), id)
 	now := stamp(s.now())
 	r, err := s.db.ExecContext(ctx, "UPDATE playback_sessions SET state='STOPPED',completion_reason='ADMIN_TERMINATED',ended_at=?,last_activity_at=? WHERE id=? AND state IN ('STARTING','PLAYING','PAUSED')", now, now, id)
 	if err != nil {

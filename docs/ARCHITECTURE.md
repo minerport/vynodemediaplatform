@@ -1,5 +1,7 @@
 # VyNode Media architecture
 
+Phase 6 distinguishes playback sessions, persisted transcode sessions, FFmpeg processes, and server-owned HLS artifacts. A central manager admits a conservative number of software video transcodes while Direct Play remains slot-free.
+
 Playback planning is separate from HTTP delivery. `FFmpegPipeline` owns capability detection, allowlisted arguments, capacity, cancellation, and bounded diagnostics. One logical playback session can own multiple pipeline instances without duplicating progress.
 
 Phase 3 adds a strict three-layer media model: filesystem observations, provider-backed logical media, and replaceable many-to-many associations. See [METADATA.md](METADATA.md), [MATCHING.md](MATCHING.md), and [ARTWORK.md](ARTWORK.md). External connectivity enriches the local database but is never a runtime dependency for browsing.

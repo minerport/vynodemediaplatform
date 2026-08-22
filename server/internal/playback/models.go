@@ -10,7 +10,6 @@ const (
 	AudioTranscode   Mode          = "AUDIO_TRANSCODE"
 	Unsupported      Mode          = "UNSUPPORTED"
 	VideoTranscode   Mode          = "VIDEO_TRANSCODE" // reserved for Phase 6
-	FullTranscode    Mode          = "FULL_TRANSCODE"  // reserved for Phase 6
 	Starting         State         = "STARTING"
 	Playing          State         = "PLAYING"
 	Paused           State         = "PAUSED"
@@ -85,6 +84,15 @@ type StreamPlan struct {
 	SourceChannels int    `json:"sourceChannels,omitempty"`
 	TargetChannels int    `json:"targetChannels,omitempty"`
 	TrackID        string `json:"trackId,omitempty"`
+	SourceWidth    int    `json:"sourceWidth,omitempty"`
+	SourceHeight   int    `json:"sourceHeight,omitempty"`
+	TargetWidth    int    `json:"targetWidth,omitempty"`
+	TargetHeight   int    `json:"targetHeight,omitempty"`
+	SourceBitrate  int64  `json:"sourceBitrate,omitempty"`
+	TargetBitrate  int64  `json:"targetBitrate,omitempty"`
+	PixelFormat    string `json:"pixelFormat,omitempty"`
+	Encoder        string `json:"encoder,omitempty"`
+	HDRHandling    string `json:"hdrHandling,omitempty"`
 }
 type ContainerPlan struct {
 	Source string `json:"source"`
@@ -99,7 +107,30 @@ type PipelinePlan struct {
 	Audio     StreamPlan    `json:"audio"`
 	Container ContainerPlan `json:"container"`
 	Subtitles SubtitlePlan  `json:"subtitles"`
+	Quality   string        `json:"quality,omitempty"`
+	Backend   BackendPlan   `json:"backend"`
 }
+type BackendPlan struct {
+	Requested      string `json:"requested"`
+	Actual         string `json:"actual"`
+	FallbackReason string `json:"fallbackReason,omitempty"`
+}
+type QualityProfile struct {
+	ID                 string `json:"id"`
+	Label              string `json:"label"`
+	MaxWidth           int    `json:"maxWidth"`
+	MaxHeight          int    `json:"maxHeight"`
+	TargetVideoBitrate int64  `json:"targetVideoBitrate"`
+	MaxVideoBitrate    int64  `json:"maxVideoBitrate"`
+	AudioBitrate       int64  `json:"audioBitrate"`
+}
+type NetworkContext string
+
+const (
+	NetworkLocal  NetworkContext = "LOCAL"
+	NetworkRemote NetworkContext = "REMOTE"
+)
+
 type Decision struct {
 	Mode           Mode         `json:"mode"`
 	MediaVersionID string       `json:"mediaVersionId,omitempty"`
@@ -110,24 +141,26 @@ type Decision struct {
 	Reasons        []Reason     `json:"reasons"`
 }
 type Session struct {
-	ID              string   `json:"id"`
-	UserID          string   `json:"-"`
-	LogicalType     string   `json:"logicalType"`
-	LogicalID       string   `json:"logicalId"`
-	MediaVersion    Version  `json:"selectedVersion"`
-	Decision        Decision `json:"decision"`
-	State           State    `json:"state"`
-	Position        float64  `json:"position"`
-	Duration        float64  `json:"duration"`
-	ResumePosition  float64  `json:"resumePosition"`
-	MediaURL        string   `json:"mediaUrl,omitempty"`
-	SubtitleURL     string   `json:"subtitleUrl,omitempty"`
-	StartedAt       string   `json:"startedAt"`
-	LastActivityAt  string   `json:"lastActivityAt"`
-	Title           string   `json:"title,omitempty"`
-	UserDisplayName string   `json:"userDisplayName,omitempty"`
-	ClientName      string   `json:"clientName,omitempty"`
-	Platform        string   `json:"platform,omitempty"`
+	ID              string           `json:"id"`
+	UserID          string           `json:"-"`
+	LogicalType     string           `json:"logicalType"`
+	LogicalID       string           `json:"logicalId"`
+	MediaVersion    Version          `json:"selectedVersion"`
+	Decision        Decision         `json:"decision"`
+	State           State            `json:"state"`
+	Position        float64          `json:"position"`
+	Duration        float64          `json:"duration"`
+	ResumePosition  float64          `json:"resumePosition"`
+	MediaURL        string           `json:"mediaUrl,omitempty"`
+	HLSURL          string           `json:"hlsUrl,omitempty"`
+	Qualities       []QualityProfile `json:"availableQualities,omitempty"`
+	SubtitleURL     string           `json:"subtitleUrl,omitempty"`
+	StartedAt       string           `json:"startedAt"`
+	LastActivityAt  string           `json:"lastActivityAt"`
+	Title           string           `json:"title,omitempty"`
+	UserDisplayName string           `json:"userDisplayName,omitempty"`
+	ClientName      string           `json:"clientName,omitempty"`
+	Platform        string           `json:"platform,omitempty"`
 }
 type StartRequest struct {
 	LogicalType             string            `json:"logicalType"`
@@ -137,6 +170,10 @@ type StartRequest struct {
 	SelectedSubtitleTrackID string            `json:"selectedSubtitleTrackId,omitempty"`
 	Resume                  bool              `json:"resume"`
 	Capabilities            CapabilityProfile `json:"capabilities"`
+	QualityID               string            `json:"qualityId,omitempty"`
+	StartPosition           float64           `json:"startPosition,omitempty"`
+	Network                 NetworkContext    `json:"networkContext,omitempty"`
+	BandwidthLimit          int64             `json:"bandwidthLimit,omitempty"`
 }
 type Progress struct {
 	State    State   `json:"state"`

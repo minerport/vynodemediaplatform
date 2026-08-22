@@ -11,6 +11,7 @@ TMDb is an optional external metadata service accessed through its documented AP
 | golang.org/x/crypto | Argon2id password hashing | BSD-3-Clause |
 | modernc SQLite transitive Go modules | SQLite runtime portability (`libc`, `memory`, `mathutil`, Go `x/sys`, `x/exp`, UUID, formatting helpers) | BSD-3-Clause or MIT; exact modules/versions in `go.mod` |
 | React / React DOM | Web UI | MIT |
+| hls.js | Authenticated HLS playback in MSE-capable browsers | Apache-2.0 |
 | Vite and @vitejs/plugin-react | Web tooling | MIT |
 | TypeScript | Type checking | Apache-2.0 |
 | Vitest | Web unit tests | MIT |

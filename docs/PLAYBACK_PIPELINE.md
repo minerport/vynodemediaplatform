@@ -1,6 +1,6 @@
 # Playback pipeline
 
-Phase 5 uses the fixed priority `DIRECT_PLAY`, `DIRECT_STREAM`, `AUDIO_TRANSCODE`, then `UNSUPPORTED`. Direct Play serves inventoried bytes with byte ranges. Generated modes stream fragmented MP4 (`frag_keyframe+empty_moov+default_base_moof`) from FFmpeg stdout and accept only a validated `start` time. A seek creates a new pipeline instance in the same logical session and cancels its predecessor. Progress remains time-based.
+The fixed priority is `DIRECT_PLAY`, `DIRECT_STREAM`, `AUDIO_TRANSCODE`, `VIDEO_TRANSCODE`, then `UNSUPPORTED`. Direct Play serves inventoried bytes with byte ranges. Phase 5 generated modes stream fragmented MP4 (`frag_keyframe+empty_moov+default_base_moof`) from FFmpeg stdout; Phase 6 video transcodes use authenticated fMP4 HLS. Progress remains time-based.
 
 Direct Stream copies selected video and audio. Audio Transcode always copies video and encodes audio as AAC: 192 kb/s for stereo and 384 kb/s above stereo. Channels are preserved up to the client limit and six-channel Phase 5 maximum; downmixing is disclosed in the plan.
 

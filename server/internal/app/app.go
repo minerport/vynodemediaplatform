@@ -55,6 +55,7 @@ func Initialize(ctx context.Context, cfg config.Config, logger *slog.Logger) (*R
 	metadataService := metadata.New(store.DB, cfg.ConfigDir, provider, os.Getenv("VYNODE_TMDB_IMAGE_BASE_URL"), os.Getenv("VYNODE_METADATA_ALLOW_INSECURE_TEST_PROVIDER"))
 	pipeline := playback.NewFFmpeg(cfg.FFmpegPath, cfg.PlaybackPipelines)
 	playbackService := playback.New(store.DB, pipeline)
+	playbackService.ConfigureVideo(playback.NewHLS(cfg.FFmpegPath, cfg.TranscodeDir, cfg.VideoTranscodes), cfg.RemoteBitrate)
 	server := &http.Server{Addr: cfg.HTTPAddress, Handler: httpserver.NewHandler(logger, store, info, authService, mediaService, metadataService, playbackService, cfg.AllowedOrigin), ReadHeaderTimeout: cfg.ReadHeaderTimeout, IdleTimeout: cfg.IdleTimeout}
 	return &Runtime{Server: server, store: store, playback: playbackService}, nil
 }
