@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -31,6 +32,7 @@ type Config struct {
 	TranscodeDir      string
 	VideoTranscodes   int
 	RemoteBitrate     int64
+	OptimizedDir      string
 }
 
 func Load() (Config, error) {
@@ -53,6 +55,7 @@ func Load() (Config, error) {
 		TranscodeDir:      envOr("VYNODE_TRANSCODE_DIR", "./data/transcode"),
 		VideoTranscodes:   1,
 		RemoteBitrate:     20_000_000,
+		OptimizedDir:      envOr("VYNODE_OPTIMIZED_DIR", filepath.Join(envOr("VYNODE_CONFIG_DIR", "./data"), "optimized")),
 	}
 	if strings.TrimSpace(cfg.ConfigDir) == "" {
 		return Config{}, fmt.Errorf("VYNODE_CONFIG_DIR must not be empty")

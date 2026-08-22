@@ -270,6 +270,10 @@ export type PlaybackSession = {
 export type NavigationItem={logicalId:string;showId:string;showTitle:string;title:string;seasonNumber:number;episodeNumber:number;available:boolean};
 export type PlaybackPreferences={preferredAudioLanguages:string[];preferredSubtitleLanguages:string[];subtitleMode:"OFF"|"ALWAYS"|"WHEN_AUDIO_NOT_PREFERRED"|"FORCED_ONLY";autoplayNextEpisode:boolean;localQualityId:string;remoteQualityId:string;avoidCommentary:boolean;preferHearingImpaired:boolean};
 export type MediaMarker={id:string;logicalType:"MOVIE"|"EPISODE";logicalId:string;type:"INTRO"|"RECAP"|"CREDITS"|"POST_CREDITS"|"CUSTOM";start:number;end:number;source:string;confidence?:number};
+export type IntelligenceJob={ID:string;Type:string;TargetType:string;TargetID:string;State:string;Progress:number;Error?:string;CreatedAt:string};
+export type OptimizedMedia={ID:string;SourceMediaFileID:string;DerivedMediaFileID:string;LogicalType:string;LogicalID:string;Profile:string;Status:string;CreatedAt:string;SizeBytes:number};
+export type MarkerCandidate={ID:string;LogicalType:string;LogicalID:string;Type:string;Source:string;ReviewState:string;SourceIdentity:string;Start:number;End:number;Confidence:number;ConfidenceClass:"HIGH"|"MEDIUM"|"LOW"};
+export type AutomationRule={ID?:string;Name:string;Enabled:boolean;Trigger:string;Timezone:string;Schedule?:{Hour:number;Minute:number};Conditions:{Field:string;Operator:string;Value:unknown}[];Actions:{Type:string;Profile?:string}[];LastExecutionAt?:string};
 export type ContinueItem = {
   logicalType: "MOVIE" | "EPISODE";
   logicalId: string;
@@ -546,6 +550,20 @@ export const api = {
   deleteMarker:(id:string)=>call<void>(`/api/v1/admin/media-markers/${id}`,{method:"DELETE"}),
   dismissContinue:(type:"MOVIE"|"EPISODE",id:string)=>call<void>(`/api/v1/playback/continue-watching/items/${type}/${id}`,{method:"DELETE"}),
   startOver:(type:"MOVIE"|"EPISODE",id:string)=>call<void>(`/api/v1/playback/${type}/${id}/start-over`,{method:"POST"}),
+  intelligenceJobs:()=>call<{jobs:IntelligenceJob[]}>("/api/v1/admin/background-jobs"),
+  analyzeMarkers:(targetType:string,targetId:string)=>call<IntelligenceJob>("/api/v1/admin/marker-analysis",{method:"POST",body:JSON.stringify({targetType,targetId})}),
+  markerReview:()=>call<{candidates:MarkerCandidate[]}>("/api/v1/admin/marker-review"),
+  reviewAutomaticMarker:(id:string,action:string,start?:number,end?:number)=>call<void>(`/api/v1/admin/marker-review/${id}`,{method:"POST",body:JSON.stringify({action,start,end})}),
+  markerPolicy:()=>call<{automaticallyActivateHighConfidence:boolean}>("/api/v1/admin/marker-policy"),
+  setMarkerPolicy:(on:boolean)=>call<void>("/api/v1/admin/marker-policy",{method:"PUT",body:JSON.stringify({automaticallyActivateHighConfidence:on})}),
+  optimize:(body:{logicalType:string;logicalId:string;sourceMediaFileId:string;profile:string})=>call<IntelligenceJob>("/api/v1/admin/optimizations",{method:"POST",body:JSON.stringify(body)}),
+  optimizedMedia:()=>call<{items:OptimizedMedia[]}>("/api/v1/admin/optimizations"),
+  deleteOptimized:(id:string)=>call<void>(`/api/v1/admin/optimizations/${id}`,{method:"DELETE"}),
+  automationRules:()=>call<{rules:AutomationRule[]}>("/api/v1/admin/automation-rules"),
+  saveAutomationRule:(body:AutomationRule)=>call<AutomationRule>(body.ID?`/api/v1/admin/automation-rules/${body.ID}`:"/api/v1/admin/automation-rules",{method:body.ID?"PUT":"POST",body:JSON.stringify(body)}),
+  deleteAutomationRule:(id:string)=>call<void>(`/api/v1/admin/automation-rules/${id}`,{method:"DELETE"}),
+  dryRunAutomation:(body:AutomationRule)=>call<{matches:string[];actionsExecuted:number}>("/api/v1/admin/automation-rules/dry-run",{method:"POST",body:JSON.stringify(body)}),
+  executeAutomation:(id:string)=>call<{matches:string[];actionsExecuted:number}>(`/api/v1/admin/automation-rules/${id}/execute`,{method:"POST"}),
   updatePlayback: (
     id: string,
     state: string,

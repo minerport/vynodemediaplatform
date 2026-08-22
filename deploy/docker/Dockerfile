@@ -22,7 +22,7 @@ RUN --mount=type=secret,id=custom_ca,required=false \
 COPY server ./server
 ARG VERSION=0.1.0
 ARG COMMIT=development
-RUN CGO_ENABLED=0 go test ./... && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/vynode/media/server/internal/buildinfo.Version=${VERSION} -X github.com/vynode/media/server/internal/buildinfo.Commit=${COMMIT}" -o /vynode-server ./server/cmd/vynode-server && mkdir -p /runtime/config /runtime/media /runtime/transcode && touch /runtime/config/.keep /runtime/media/.keep /runtime/transcode/.keep
+RUN CGO_ENABLED=0 go vet ./... && CGO_ENABLED=0 go test ./... && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/vynode/media/server/internal/buildinfo.Version=${VERSION} -X github.com/vynode/media/server/internal/buildinfo.Commit=${COMMIT}" -o /vynode-server ./server/cmd/vynode-server && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o /tmp/vynode-server.exe ./server/cmd/vynode-server && mkdir -p /runtime/config /runtime/media /runtime/transcode /runtime/optimized && touch /runtime/config/.keep /runtime/media/.keep /runtime/transcode/.keep /runtime/optimized/.keep
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg ca-certificates && rm -rf /var/lib/apt/lists/* && groupadd -g 65532 vynode && useradd -u 65532 -g 65532 -M -s /usr/sbin/nologin vynode
 COPY --from=build /vynode-server /vynode-server
@@ -30,9 +30,11 @@ COPY --from=web --chown=65532:65532 /src/apps/web/dist /web
 COPY --from=build --chown=65532:65532 /runtime/config /config
 COPY --from=build --chown=65532:65532 /runtime/media /media
 COPY --from=build --chown=65532:65532 /runtime/transcode /transcode
+COPY --from=build --chown=65532:65532 /runtime/optimized /optimized
 ENV VYNODE_HTTP_ADDRESS=0.0.0.0:8096 VYNODE_CONFIG_DIR=/config VYNODE_DATABASE_TYPE=sqlite VYNODE_WEB_DIR=/web
 ENV VYNODE_FFPROBE_PATH=/usr/bin/ffprobe VYNODE_FFMPEG_PATH=/usr/bin/ffmpeg VYNODE_TRANSCODE_DIR=/transcode VYNODE_PROBE_CONCURRENCY=2 VYNODE_PLAYBACK_PIPELINES=2
-VOLUME ["/config", "/media", "/transcode"]
+ENV VYNODE_OPTIMIZED_DIR=/optimized
+VOLUME ["/config", "/media", "/transcode", "/optimized"]
 EXPOSE 8096
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD ["/vynode-server", "healthcheck"]
 USER 65532:65532

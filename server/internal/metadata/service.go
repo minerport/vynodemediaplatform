@@ -29,6 +29,11 @@ type Service struct {
 	artworkBase           string
 	allowInsecureProvider bool
 	artworkTimeout        time.Duration
+	automation            func(context.Context, string, string)
+}
+
+func (s *Service) ConfigureAutomation(hook func(context.Context, string, string)) {
+	s.automation = hook
 }
 
 func New(db *sql.DB, configDir string, provider Provider, testProviderOptions ...string) *Service {
@@ -492,6 +497,9 @@ func (s *Service) MatchMovie(ctx context.Context, fileID, providerID string, man
 	if e = tx.Commit(); e != nil {
 		return "", e
 	}
+	if s.automation != nil {
+		go s.automation(context.Background(), "MEDIA_IDENTIFIED", fileID)
+	}
 	for _, a := range d.Artwork {
 		if artworkID, err := s.AddArtwork(ctx, "MOVIE", id, a); err == nil {
 			go func() { _ = s.CacheArtwork(context.Background(), artworkID) }()
@@ -517,6 +525,9 @@ func (s *Service) Refresh(ctx context.Context, kind, id string) error {
 			return e
 		}
 		_, e = s.db.ExecContext(ctx, `UPDATE movies SET title=?,original_title=?,sort_title=CASE WHEN manual_override=1 THEN sort_title ELSE ? END,year=?,release_date=?,runtime_minutes=?,overview=?,tagline=?,status=?,original_language=?,rating_value=?,rating_votes=?,metadata_state='IDENTIFIED',last_metadata_error=NULL,last_metadata_refresh_at=?,updated_at=? WHERE id=?`, d.Title, d.OriginalTitle, cleanSort(d.Title), d.Year, d.ReleaseDate, d.RuntimeMinutes, d.Overview, d.Tagline, d.Status, d.OriginalLanguage, d.Rating, d.VoteCount, n, n, id)
+		if e == nil && s.automation != nil {
+			go s.automation(context.Background(), "METADATA_REFRESHED", id)
+		}
 		return e
 	}
 	if kind == "SHOW" {
@@ -530,6 +541,9 @@ func (s *Service) Refresh(ctx context.Context, kind, id string) error {
 			return e
 		}
 		_, e = s.db.ExecContext(ctx, `UPDATE shows SET title=?,original_title=?,sort_title=CASE WHEN manual_override=1 THEN sort_title ELSE ? END,year=?,first_air_date=?,status=?,overview=?,original_language=?,rating_value=?,rating_votes=?,metadata_state='IDENTIFIED',last_metadata_error=NULL,last_metadata_refresh_at=?,updated_at=? WHERE id=?`, d.Title, d.OriginalTitle, cleanSort(d.Title), d.Year, d.FirstAirDate, d.Status, d.Overview, d.OriginalLanguage, d.Rating, d.VoteCount, n, n, id)
+		if e == nil && s.automation != nil {
+			go s.automation(context.Background(), "METADATA_REFRESHED", id)
+		}
 		return e
 	}
 	return ErrValidation
@@ -605,6 +619,9 @@ func (s *Service) MatchTV(ctx context.Context, fileID, showProviderID string, se
 	}
 	if e = tx.Commit(); e != nil {
 		return "", e
+	}
+	if s.automation != nil {
+		go s.automation(context.Background(), "MEDIA_IDENTIFIED", fileID)
 	}
 	for _, a := range show.Artwork {
 		if artworkID, err := s.AddArtwork(ctx, "SHOW", showID, a); err == nil {
