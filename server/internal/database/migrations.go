@@ -144,6 +144,24 @@ CREATE INDEX idx_jobs_state_priority ON background_jobs(state,priority,created_a
 CREATE UNIQUE INDEX idx_jobs_active_dedupe ON background_jobs(job_type,target_type,target_id) WHERE state IN ('QUEUED','RUNNING');
 CREATE INDEX idx_optimized_logical ON optimized_media(logical_type,logical_id,status);
 CREATE INDEX idx_automation_trigger ON automation_rules(enabled,trigger_type);
+`}, {11, "curation_and_home", `
+CREATE TABLE collections (id TEXT PRIMARY KEY,name TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',sort_title TEXT,scope TEXT NOT NULL CHECK(scope IN ('SERVER_SHARED','USER_PRIVATE')),owner_user_id TEXT,ordering TEXT NOT NULL CHECK(ordering IN ('CUSTOM','TITLE','YEAR','DATE_ADDED','RELEASE_DATE','RATING')),created_at TEXT NOT NULL,updated_at TEXT NOT NULL,FOREIGN KEY(owner_user_id) REFERENCES users(id) ON DELETE CASCADE,CHECK((scope='SERVER_SHARED' AND owner_user_id IS NULL) OR (scope='USER_PRIVATE' AND owner_user_id IS NOT NULL)));
+CREATE TABLE collection_items (collection_id TEXT NOT NULL,item_type TEXT NOT NULL CHECK(item_type IN ('MOVIE','SHOW')),item_id TEXT NOT NULL,position INTEGER NOT NULL,added_at TEXT NOT NULL,PRIMARY KEY(collection_id,item_type,item_id),UNIQUE(collection_id,position),FOREIGN KEY(collection_id) REFERENCES collections(id) ON DELETE CASCADE);
+CREATE TABLE smart_collections (id TEXT PRIMARY KEY,name TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',scope TEXT NOT NULL CHECK(scope IN ('SERVER_SHARED','USER_PRIVATE')),owner_user_id TEXT,rule_schema_version INTEGER NOT NULL DEFAULT 1,rule_json TEXT NOT NULL,sort_field TEXT NOT NULL,sort_direction TEXT NOT NULL CHECK(sort_direction IN ('ASC','DESC')),item_limit INTEGER NOT NULL CHECK(item_limit BETWEEN 1 AND 500),created_at TEXT NOT NULL,updated_at TEXT NOT NULL,FOREIGN KEY(owner_user_id) REFERENCES users(id) ON DELETE CASCADE,CHECK((scope='SERVER_SHARED' AND owner_user_id IS NULL) OR (scope='USER_PRIVATE' AND owner_user_id IS NOT NULL)));
+CREATE TABLE playlists (id TEXT PRIMARY KEY,owner_user_id TEXT NOT NULL,name TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,updated_at TEXT NOT NULL,FOREIGN KEY(owner_user_id) REFERENCES users(id) ON DELETE CASCADE);
+CREATE TABLE playlist_items (id TEXT PRIMARY KEY,playlist_id TEXT NOT NULL,item_type TEXT NOT NULL CHECK(item_type IN ('MOVIE','EPISODE')),item_id TEXT NOT NULL,position INTEGER NOT NULL,added_at TEXT NOT NULL,UNIQUE(playlist_id,position),FOREIGN KEY(playlist_id) REFERENCES playlists(id) ON DELETE CASCADE);
+CREATE TABLE watchlist_items (user_id TEXT NOT NULL,item_type TEXT NOT NULL CHECK(item_type IN ('MOVIE','SHOW')),item_id TEXT NOT NULL,added_at TEXT NOT NULL,PRIMARY KEY(user_id,item_type,item_id),FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
+CREATE TABLE favorite_items (user_id TEXT NOT NULL,item_type TEXT NOT NULL CHECK(item_type IN ('MOVIE','SHOW')),item_id TEXT NOT NULL,added_at TEXT NOT NULL,PRIMARY KEY(user_id,item_type,item_id),FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
+CREATE TABLE home_layouts (user_id TEXT PRIMARY KEY,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
+CREATE TABLE home_rows (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,row_type TEXT NOT NULL CHECK(row_type IN ('CONTINUE_WATCHING','RECENTLY_ADDED_MOVIES','RECENTLY_ADDED_SHOWS','WATCHLIST','FAVORITES','COLLECTION','SMART_COLLECTION','PLAYLIST')),title TEXT NOT NULL,source_id TEXT,enabled INTEGER NOT NULL DEFAULT 1,position INTEGER NOT NULL,item_limit INTEGER NOT NULL CHECK(item_limit BETWEEN 1 AND 50),created_at TEXT NOT NULL,updated_at TEXT NOT NULL,UNIQUE(user_id,position),FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
+CREATE INDEX idx_collection_items_order ON collection_items(collection_id,position);
+CREATE INDEX idx_collections_scope_owner ON collections(scope,owner_user_id,sort_title);
+CREATE INDEX idx_smart_scope_owner ON smart_collections(scope,owner_user_id,name);
+CREATE INDEX idx_playlists_owner ON playlists(owner_user_id,updated_at DESC);
+CREATE INDEX idx_playlist_items_order ON playlist_items(playlist_id,position);
+CREATE INDEX idx_watchlist_user_added ON watchlist_items(user_id,added_at DESC);
+CREATE INDEX idx_favorites_user_added ON favorite_items(user_id,added_at DESC);
+CREATE INDEX idx_home_rows_user_order ON home_rows(user_id,position);
 `}}
 
 func (s *Store) Migrate(ctx context.Context) error {

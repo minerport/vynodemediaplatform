@@ -85,3 +85,7 @@ a Service/installer without requiring Docker. React/TypeScript is the browser cl
 Kotlin/Compose with Media3, including TV focus/remote behavior—not a WebView. Apple
 clients will use SwiftUI/AVFoundation. Every client consumes API models and
 capability contracts rather than persistence models.
+
+## Curation and Home
+
+Phase 9 keeps manual collections, smart collections, private playlists, watchlists, favorites, and Home layouts as distinct aggregates. Home is a composed API backed by modular typed row resolvers; the web client does not hard-code row data sources.

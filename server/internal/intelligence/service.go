@@ -32,6 +32,7 @@ type Service struct {
 	mu                sync.Mutex
 	running           map[string]context.CancelFunc
 	schedulerCancel   context.CancelFunc
+	collections       CollectionManager
 }
 
 func New(db *sql.DB, ffmpeg, optimized string) *Service {

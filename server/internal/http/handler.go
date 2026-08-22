@@ -6,8 +6,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"github.com/vynode/media/server/internal/auth"
-	"github.com/vynode/media/server/internal/media"
+	"github.com/vynode/media/server/internal/curation"
 	"github.com/vynode/media/server/internal/intelligence"
+	"github.com/vynode/media/server/internal/media"
 	"github.com/vynode/media/server/internal/metadata"
 	"github.com/vynode/media/server/internal/playback"
 	"log/slog"
@@ -38,6 +39,7 @@ type Handler struct {
 	metadata      *metadata.Service
 	playback      *playback.Service
 	intelligence  *intelligence.Service
+	curation      *curation.Service
 	allowedOrigin string
 }
 type errorResponse struct {
@@ -49,9 +51,16 @@ type apiError struct {
 	RequestID string `json:"requestId,omitempty"`
 }
 
-func NewHandler(logger *slog.Logger, readiness Readiness, info SystemInfo, authService *auth.Service, mediaService *media.Service, metadataService *metadata.Service, playbackService *playback.Service, allowedOrigin string, intelligenceService ...*intelligence.Service) http.Handler {
+func NewHandler(logger *slog.Logger, readiness Readiness, info SystemInfo, authService *auth.Service, mediaService *media.Service, metadataService *metadata.Service, playbackService *playback.Service, allowedOrigin string, optional ...any) http.Handler {
 	h := &Handler{logger: logger, readiness: readiness, info: info, auth: authService, media: mediaService, metadata: metadataService, playback: playbackService, allowedOrigin: allowedOrigin}
-	if len(intelligenceService)>0 { h.intelligence=intelligenceService[0] }
+	for _, service := range optional {
+		switch x := service.(type) {
+		case *intelligence.Service:
+			h.intelligence = x
+		case *curation.Service:
+			h.curation = x
+		}
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", h.health)
 	mux.HandleFunc("GET /ready", h.ready)
@@ -69,7 +78,12 @@ func NewHandler(logger *slog.Logger, readiness Readiness, info SystemInfo, authS
 	if playbackService != nil {
 		h.playbackRoutes(mux)
 	}
-	if h.intelligence != nil { h.intelligenceRoutes(mux) }
+	if h.intelligence != nil {
+		h.intelligenceRoutes(mux)
+	}
+	if h.curation != nil {
+		h.curationRoutes(mux)
+	}
 	if info.WebDir != "" {
 		mux.Handle("/", spaHandler(info.WebDir))
 	} else {

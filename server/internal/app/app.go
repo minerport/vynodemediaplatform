@@ -6,6 +6,7 @@ import (
 	"github.com/vynode/media/server/internal/auth"
 	"github.com/vynode/media/server/internal/buildinfo"
 	"github.com/vynode/media/server/internal/config"
+	"github.com/vynode/media/server/internal/curation"
 	"github.com/vynode/media/server/internal/database"
 	httpserver "github.com/vynode/media/server/internal/http"
 	"github.com/vynode/media/server/internal/identity"
@@ -59,9 +60,11 @@ func Initialize(ctx context.Context, cfg config.Config, logger *slog.Logger) (*R
 	playbackService := playback.New(store.DB, pipeline)
 	playbackService.ConfigureVideo(playback.NewHLS(cfg.FFmpegPath, cfg.TranscodeDir, cfg.VideoTranscodes), cfg.RemoteBitrate)
 	intelligenceService := intelligence.New(store.DB, cfg.FFmpegPath, cfg.OptimizedDir)
+	curationService := curation.New(store.DB)
+	intelligenceService.ConfigureCollections(curationService)
 	intelligenceService.StartScheduler()
 	metadataService.ConfigureAutomation(intelligenceService.HandleEvent)
-	server := &http.Server{Addr: cfg.HTTPAddress, Handler: httpserver.NewHandler(logger, store, info, authService, mediaService, metadataService, playbackService, cfg.AllowedOrigin, intelligenceService), ReadHeaderTimeout: cfg.ReadHeaderTimeout, IdleTimeout: cfg.IdleTimeout}
+	server := &http.Server{Addr: cfg.HTTPAddress, Handler: httpserver.NewHandler(logger, store, info, authService, mediaService, metadataService, playbackService, cfg.AllowedOrigin, intelligenceService, curationService), ReadHeaderTimeout: cfg.ReadHeaderTimeout, IdleTimeout: cfg.IdleTimeout}
 	return &Runtime{Server: server, store: store, playback: playbackService, intelligence: intelligenceService}, nil
 }
 func (r *Runtime) Shutdown(ctx context.Context) error {

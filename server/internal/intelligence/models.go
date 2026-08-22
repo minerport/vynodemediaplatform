@@ -50,7 +50,7 @@ type Condition struct {
 	Field, Operator string
 	Value           any
 }
-type Action struct{ Type, Profile string }
+type Action struct{ Type, Profile, CollectionID string }
 type Schedule struct {
 	Hour   int `json:"hour"`
 	Minute int `json:"minute"`

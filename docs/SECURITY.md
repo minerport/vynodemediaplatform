@@ -31,3 +31,7 @@ root preserves prior inventory rather than causing mass missing-file updates.
 ## Not yet implemented
 
 MFA, passkeys, cloud/console recovery, owner recovery or transfer, external identity providers, trusted-proxy parsing, VyNode Connect, and device pairing are not implemented. Account deletion remains deferred.
+
+## Curation privacy
+
+Curation ownership comes from the authenticated principal, never a caller-supplied user ID. Users cannot enumerate another account's playlists, watchlist, favorites, private collections, or Home layout. Shared collection administration requires OWNER/ADMIN policy checks. Smart rules accept only bounded typed nodes compiled through parameterized allowlists—never SQL or scripts.
