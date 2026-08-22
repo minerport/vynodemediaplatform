@@ -39,6 +39,11 @@ errors never cross the API. The server binds to loopback by default.
 
 ## Future media pipeline
 
+Phase 2 implements the physical half of this pipeline: typed libraries and sources,
+guarded read-only walking, incremental path/size/mtime comparison, bounded FFprobe,
+normalized streams, persistent cancellable scan jobs, and offline-root preservation.
+Physical files deliberately remain separate from future logical media entities.
+
 Scanning will crawl configured roots through a guarded filesystem adapter, reject
 traversal, fingerprint files, probe through a dedicated FFprobe abstraction, and
 submit isolated/idempotent jobs. Provider-neutral media entities will hold stable

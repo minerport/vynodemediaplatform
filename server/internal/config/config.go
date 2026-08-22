@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -23,6 +24,8 @@ type Config struct {
 	RefreshTokenTTL   time.Duration
 	AllowedOrigin     string
 	WebDir            string
+	FFprobePath       string
+	ProbeConcurrency  int
 }
 
 func Load() (Config, error) {
@@ -38,6 +41,8 @@ func Load() (Config, error) {
 		RefreshTokenTTL:   30 * 24 * time.Hour,
 		AllowedOrigin:     envOr("VYNODE_ALLOWED_ORIGIN", ""),
 		WebDir:            envOr("VYNODE_WEB_DIR", ""),
+		FFprobePath:       envOr("VYNODE_FFPROBE_PATH", ""),
+		ProbeConcurrency:  2,
 	}
 	if strings.TrimSpace(cfg.ConfigDir) == "" {
 		return Config{}, fmt.Errorf("VYNODE_CONFIG_DIR must not be empty")
@@ -72,6 +77,13 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("VYNODE_SHUTDOWN_TIMEOUT must be a positive duration")
 		}
 		cfg.ShutdownTimeout = duration
+	}
+	if raw := os.Getenv("VYNODE_PROBE_CONCURRENCY"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > 8 {
+			return Config{}, fmt.Errorf("VYNODE_PROBE_CONCURRENCY must be between 1 and 8")
+		}
+		cfg.ProbeConcurrency = value
 	}
 	return cfg, nil
 }
