@@ -1,0 +1,24 @@
+services:
+  vynode:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    image: vynode-media:phase0
+    container_name: vynode-media
+    environment:
+      VYNODE_SERVER_NAME: VyNode Media
+      VYNODE_LOG_LEVEL: info
+    ports: ["8096:8096"]
+    volumes:
+      - vynode-config:/config
+      - type: bind
+        source: ../../sample-media
+        target: /media
+        read_only: true
+      - vynode-transcode:/transcode
+    restart: unless-stopped
+    stop_grace_period: 15s
+volumes:
+  vynode-config:
+  vynode-transcode:
+

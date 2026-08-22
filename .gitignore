@@ -1,0 +1,13 @@
+.env
+.env.local
+node_modules/
+dist/
+coverage/
+artifacts/
+*.log
+*.db
+*.db-shm
+*.db-wal
+*.tsbuildinfo
+.idea/
+.vscode/

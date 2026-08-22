@@ -1,0 +1,51 @@
+openapi: 3.1.0
+info: { title: VyNode Media API, version: 0.1.0, description: Versioned client contract. Breaking changes require a new /api/vN namespace. }
+servers: [{ url: / }]
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      responses: { '200': { description: Process is alive, content: { application/json: { schema: { $ref: '#/components/schemas/Probe' } } } } }
+  /ready:
+    get:
+      operationId: getReadiness
+      responses:
+        '200': { description: Dependencies are ready, content: { application/json: { schema: { $ref: '#/components/schemas/Probe' } } } }
+        '503': { description: Dependency unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /api/v1/system/version:
+    get:
+      operationId: getSystemVersion
+      responses: { '200': { description: Build and API version, content: { application/json: { schema: { $ref: '#/components/schemas/SystemVersion' } } } } }
+  /api/v1/system/info:
+    get:
+      operationId: getSystemInfo
+      responses: { '200': { description: Safe server information, content: { application/json: { schema: { $ref: '#/components/schemas/SystemInfo' } } } } }
+components:
+  schemas:
+    Probe:
+      type: object
+      required: [status]
+      properties: { status: { type: string } }
+    SystemVersion:
+      type: object
+      required: [version, commit, apiVersion]
+      properties: { version: { type: string }, commit: { type: string }, apiVersion: { type: string, const: v1 } }
+    SystemInfo:
+      type: object
+      required: [version, operatingSystem, architecture, instanceId, serverName, databaseType, uptimeSeconds]
+      properties:
+        version: { type: string }
+        operatingSystem: { type: string }
+        architecture: { type: string }
+        instanceId: { type: string, format: uuid }
+        serverName: { type: string }
+        databaseType: { type: string, enum: [sqlite] }
+        uptimeSeconds: { type: integer, minimum: 0 }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId]
+          properties: { code: { type: string }, message: { type: string }, requestId: { type: string } }

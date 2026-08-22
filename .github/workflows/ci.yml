@@ -1,0 +1,32 @@
+name: CI
+on: { push: {}, pull_request: {} }
+permissions: { contents: read }
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.24.x', cache: true }
+      - run: test -z "$(gofmt -l server)"
+      - run: go test ./...
+      - run: go build ./server/cmd/vynode-server
+      - run: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/vynode-server.exe ./server/cmd/vynode-server
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with: { context: ., file: deploy/docker/Dockerfile, push: false }
+
