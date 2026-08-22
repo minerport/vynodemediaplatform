@@ -40,6 +40,8 @@ type Movie struct {
 	VoteCount        int       `json:"voteCount,omitempty"`
 	Genres           []string  `json:"genres"`
 	Versions         []Version `json:"versions,omitempty"`
+	Credits          []Credit  `json:"credits,omitempty"`
+	Companies        []string  `json:"companies,omitempty"`
 }
 
 type Show struct {
@@ -61,6 +63,8 @@ type Show struct {
 	VoteCount        int      `json:"voteCount,omitempty"`
 	Genres           []string `json:"genres"`
 	Seasons          []Season `json:"seasons,omitempty"`
+	Credits          []Credit `json:"credits,omitempty"`
+	Companies        []string `json:"companies,omitempty"`
 }
 
 type Season struct {
@@ -97,6 +101,8 @@ type MovieDetails struct {
 	Genres                                                                                          []ProviderGenre
 	ExternalIDs                                                                                     map[string]string
 	Artwork                                                                                         []ProviderArtwork
+	Credits                                                                                         []ProviderCredit
+	Companies                                                                                       []ProviderCompany
 }
 
 type ShowDetails struct {
@@ -107,6 +113,8 @@ type ShowDetails struct {
 	Genres                                                          []ProviderGenre
 	ExternalIDs                                                     map[string]string
 	Artwork                                                         []ProviderArtwork
+	Credits                                                         []ProviderCredit
+	Companies                                                       []ProviderCompany
 }
 
 type SeasonDetails struct {
@@ -121,6 +129,19 @@ type EpisodeDetails struct {
 	Artwork                              []ProviderArtwork
 }
 type ProviderGenre struct{ ID, Name string }
+type ProviderPerson struct{ ID, Name string }
+type ProviderCredit struct {
+	Person          ProviderPerson
+	Type, Character string
+	Order           int
+}
+type ProviderCompany struct{ ID, Name string }
+type Credit struct {
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	Character string `json:"character,omitempty"`
+	Order     int    `json:"order,omitempty"`
+}
 type ProviderArtwork struct {
 	Type, Path, Language string
 	Width, Height        int
@@ -128,9 +149,18 @@ type ProviderArtwork struct {
 }
 
 type Artwork struct {
-	ID, EntityType, EntityID, Type, Provider, Language, MimeType string
-	Width, Height                                                int
-	Selected, ManualSelection, Cached                            bool
+	ID              string `json:"id"`
+	EntityType      string `json:"entityType"`
+	EntityID        string `json:"entityId"`
+	Type            string `json:"type"`
+	Provider        string `json:"provider"`
+	Language        string `json:"language,omitempty"`
+	MimeType        string `json:"mimeType,omitempty"`
+	Width           int    `json:"width,omitempty"`
+	Height          int    `json:"height,omitempty"`
+	Selected        bool   `json:"selected"`
+	ManualSelection bool   `json:"manualSelection"`
+	Cached          bool   `json:"cached"`
 }
 
 type ProviderStatus struct {

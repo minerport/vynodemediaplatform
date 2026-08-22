@@ -6,6 +6,6 @@ Matching is deterministic. Normalized exact filename title contributes 70 points
 - Medium confidence: at least 60 points without the high-confidence margin; ambiguous review.
 - Low confidence: below 60; unmatched.
 
-Candidate ordering cannot turn uncertainty into certainty. Scores, candidates, and signal explanations are persisted in `metadata_match_attempts`. TV first identifies the show, then resolves the provider's season and numbered episode; it never performs a global episode-title search. Multi-episode filename ranges create one association per episode.
+Candidate ordering cannot turn uncertainty into certainty. Scores, candidates, and signal explanations are persisted in `metadata_match_attempts`. TV first identifies the show, then resolves the provider's season and numbered episode; it never performs a global episode-title search. Parsed season/episode structure is an additional TV signal. Multi-episode filename ranges create one association per episode, and the admin resolver displays all parsed episode numbers before confirmation.
 
 Manual match and Fix Match use the same explicit association operation and are audited. Manual associations are stable across scans. Unmatch deletes only the association; it never changes or deletes the file.

@@ -64,3 +64,14 @@ func TestTMDbTimeout(t *testing.T) {
 		t.Fatal("expected timeout")
 	}
 }
+func TestTMDbNormalizesCreditsAndCompanies(t *testing.T) {
+	s := tmdbServer(t, 200, `{"id":603,"title":"The Matrix","release_date":"1999-03-31","production_companies":[{"id":79,"name":"Studio"}],"external_ids":{"imdb_id":"tt0133093"},"credits":{"cast":[{"id":1,"name":"Actor","character":"Lead","order":0}],"crew":[{"id":2,"name":"Director","job":"Director","department":"Directing"},{"id":3,"name":"Writer","job":"Screenplay","department":"Writing"}]}}`)
+	defer s.Close()
+	v, e := testTMDb(s).Movie(context.Background(), "603", "en-US", "US")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(v.Credits) != 3 || len(v.Companies) != 1 || v.ExternalIDs["IMDB"] != "tt0133093" {
+		t.Fatalf("normalization failed: %+v", v)
+	}
+}

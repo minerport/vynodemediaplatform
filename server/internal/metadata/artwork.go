@@ -15,7 +15,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 const maxArtworkBytes = 15 << 20
@@ -73,7 +72,10 @@ func (s *Service) SelectArtwork(ctx context.Context, kind, entity, id string) er
 	if _, e = tx.ExecContext(ctx, "UPDATE artwork SET selected=1,manual_selection=1 WHERE id=?", id); e != nil {
 		return e
 	}
-	return tx.Commit()
+	if e = tx.Commit(); e != nil {
+		return e
+	}
+	return s.CacheArtwork(ctx, id)
 }
 
 func (s *Service) AddArtwork(ctx context.Context, kind, entity string, a ProviderArtwork) (string, error) {
@@ -87,12 +89,11 @@ func (s *Service) AddArtwork(ctx context.Context, kind, entity string, a Provide
 	}
 	return id, nil
 }
-func (s *Service) CacheArtwork(ctx context.Context, id, imageBase string) error {
-	if imageBase == "" {
-		imageBase = "https://image.tmdb.org/t/p/original"
-	}
+func (s *Service) CacheArtwork(ctx context.Context, id string) error {
+	imageBase := s.artworkBase
 	base, e := url.Parse(imageBase)
-	if e != nil || base.Scheme != "https" || !strings.EqualFold(base.Hostname(), "image.tmdb.org") {
+	productionHost := base.Scheme == "https" && strings.EqualFold(base.Hostname(), "image.tmdb.org")
+	if e != nil || (!productionHost && !s.allowInsecureProvider) || (base.Scheme != "https" && !(s.allowInsecureProvider && base.Scheme == "http")) {
 		return ErrValidation
 	}
 	var providerPath string
@@ -104,8 +105,8 @@ func (s *Service) CacheArtwork(ctx context.Context, id, imageBase string) error 
 	if e != nil {
 		return ErrValidation
 	}
-	client := http.Client{Timeout: 15 * time.Second, CheckRedirect: func(req *http.Request, via []*http.Request) error {
-		if req.URL.Scheme != "https" || !strings.EqualFold(req.URL.Hostname(), base.Hostname()) {
+	client := http.Client{Timeout: s.artworkTimeout, CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if req.URL.Scheme != base.Scheme || !strings.EqualFold(req.URL.Hostname(), base.Hostname()) {
 			return http.ErrUseLastResponse
 		}
 		return nil
@@ -174,6 +175,15 @@ func (s *Service) ArtworkFile(ctx context.Context, id string) (path, mime, etag 
 	rootAbs, _ := filepath.Abs(root)
 	if er != nil || !strings.HasPrefix(clean, rootAbs+string(os.PathSeparator)) {
 		return "", "", "", ErrValidation
+	}
+	f, er := os.Open(clean)
+	if er != nil {
+		return "", "", "", ErrNotFound
+	}
+	_, format, er := image.DecodeConfig(f)
+	_ = f.Close()
+	if er != nil || (mime == "image/jpeg" && format != "jpeg") || (mime == "image/png" && format != "png") || (mime == "image/gif" && format != "gif") {
+		return "", "", "", ErrNotFound
 	}
 	return clean, mime, etag, nil
 }

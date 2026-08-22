@@ -170,6 +170,28 @@ type tmdbDetails struct {
 		IMDB string `json:"imdb_id"`
 		TVDB int    `json:"tvdb_id"`
 	} `json:"external_ids"`
+	ProductionCompanies []struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	} `json:"production_companies"`
+	CreatedBy []struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	} `json:"created_by"`
+	Credits struct {
+		Cast []struct {
+			ID        int    `json:"id"`
+			Name      string `json:"name"`
+			Character string `json:"character"`
+			Order     int    `json:"order"`
+		} `json:"cast"`
+		Crew []struct {
+			ID         int    `json:"id"`
+			Name       string `json:"name"`
+			Job        string `json:"job"`
+			Department string `json:"department"`
+		} `json:"crew"`
+	} `json:"credits"`
 }
 
 func genres(v []struct {
@@ -184,12 +206,32 @@ func genres(v []struct {
 }
 func (t *TMDb) Movie(ctx context.Context, id, language, region string) (MovieDetails, error) {
 	q := common(language, region)
-	q.Set("append_to_response", "external_ids")
+	q.Set("append_to_response", "external_ids,credits")
 	var x tmdbDetails
 	if err := t.request(ctx, "/movie/"+url.PathEscape(id), q, &x); err != nil {
 		return MovieDetails{}, err
 	}
 	d := MovieDetails{Candidate: Candidate{ProviderID: strconv.Itoa(x.ID), Title: x.Title, Year: yearOf(x.ReleaseDate), Overview: x.Overview}, OriginalTitle: x.OriginalTitle, ReleaseDate: x.ReleaseDate, RuntimeMinutes: x.Runtime, Overview: x.Overview, Tagline: x.Tagline, Status: x.Status, OriginalLanguage: x.OriginalLanguage, Rating: x.VoteAverage, VoteCount: x.VoteCount, Genres: genres(x.Genres), ExternalIDs: map[string]string{"IMDB": x.ExternalIDs.IMDB}}
+	for _, c := range x.ProductionCompanies {
+		d.Companies = append(d.Companies, ProviderCompany{ID: strconv.Itoa(c.ID), Name: c.Name})
+	}
+	for _, c := range x.Credits.Cast {
+		if len(d.Credits) >= 20 {
+			break
+		}
+		d.Credits = append(d.Credits, ProviderCredit{Person: ProviderPerson{ID: strconv.Itoa(c.ID), Name: c.Name}, Type: "ACTOR", Character: c.Character, Order: c.Order})
+	}
+	for _, c := range x.Credits.Crew {
+		typ := ""
+		if c.Job == "Director" {
+			typ = "DIRECTOR"
+		} else if c.Department == "Writing" && (c.Job == "Writer" || c.Job == "Screenplay" || c.Job == "Story") {
+			typ = "WRITER"
+		}
+		if typ != "" {
+			d.Credits = append(d.Credits, ProviderCredit{Person: ProviderPerson{ID: strconv.Itoa(c.ID), Name: c.Name}, Type: typ})
+		}
+	}
 	if x.PosterPath != "" {
 		d.Artwork = append(d.Artwork, ProviderArtwork{Type: "POSTER", Path: x.PosterPath})
 	}
@@ -200,12 +242,24 @@ func (t *TMDb) Movie(ctx context.Context, id, language, region string) (MovieDet
 }
 func (t *TMDb) Show(ctx context.Context, id, language, region string) (ShowDetails, error) {
 	q := common(language, region)
-	q.Set("append_to_response", "external_ids")
+	q.Set("append_to_response", "external_ids,credits")
 	var x tmdbDetails
 	if err := t.request(ctx, "/tv/"+url.PathEscape(id), q, &x); err != nil {
 		return ShowDetails{}, err
 	}
 	d := ShowDetails{Candidate: Candidate{ProviderID: strconv.Itoa(x.ID), Title: x.Name, Year: yearOf(x.FirstAirDate), Overview: x.Overview}, OriginalTitle: x.OriginalName, FirstAirDate: x.FirstAirDate, Status: x.Status, Overview: x.Overview, OriginalLanguage: x.OriginalLanguage, Rating: x.VoteAverage, VoteCount: x.VoteCount, Genres: genres(x.Genres), ExternalIDs: map[string]string{"TVDB": strconv.Itoa(x.ExternalIDs.TVDB)}}
+	for _, c := range x.ProductionCompanies {
+		d.Companies = append(d.Companies, ProviderCompany{ID: strconv.Itoa(c.ID), Name: c.Name})
+	}
+	for _, c := range x.CreatedBy {
+		d.Credits = append(d.Credits, ProviderCredit{Person: ProviderPerson{ID: strconv.Itoa(c.ID), Name: c.Name}, Type: "CREATOR"})
+	}
+	for _, c := range x.Credits.Cast {
+		if len(d.Credits) >= 22 {
+			break
+		}
+		d.Credits = append(d.Credits, ProviderCredit{Person: ProviderPerson{ID: strconv.Itoa(c.ID), Name: c.Name}, Type: "ACTOR", Character: c.Character, Order: c.Order})
+	}
 	if x.PosterPath != "" {
 		d.Artwork = append(d.Artwork, ProviderArtwork{Type: "POSTER", Path: x.PosterPath})
 	}

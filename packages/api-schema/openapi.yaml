@@ -101,13 +101,17 @@ paths:
   /api/v1/admin/metadata/files/{fileId}/unmatch:
     post: { operationId: unmatchMedia, summary: Requires metadata.manage; physical inventory and user file remain unchanged, security: [{ bearerAuth: [] }], parameters: [{ name: fileId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: Association removed and orphan retained } } }
   /api/v1/libraries/{libraryId}/identify:
-    post: { operationId: identifyLibrary, summary: Requires metadata.manage; queues an explicit background identification stage, security: [{ bearerAuth: [] }], parameters: [{ $ref: '#/components/parameters/LibraryId' }], responses: { '202': { description: Metadata job queued } } }
+    post: { operationId: identifyLibrary, summary: Requires metadata.manage; queues an explicit background identification stage, security: [{ bearerAuth: [] }], parameters: [{ $ref: '#/components/parameters/LibraryId' }], responses: { '202': { description: Metadata job queued }, '409': { description: An active job already exists; response includes that job } } }
   /api/v1/libraries/{libraryId}/metadata-jobs/{jobId}:
     get: { operationId: getMetadataJob, summary: Requires metadata.manage, security: [{ bearerAuth: [] }], parameters: [{ $ref: '#/components/parameters/LibraryId' }, { $ref: '#/components/parameters/JobId' }], responses: { '200': { description: Identification counters and state } } }
-  /api/v1/{entityType}/{id}/artwork:
-    get: { operationId: listArtwork, summary: Lists logical artwork without exposing cache paths, security: [{ bearerAuth: [] }], parameters: [{ name: entityType, in: path, required: true, schema: { type: string, enum: [movies, shows] } }, { name: id, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Artwork candidates and selection state } } }
-  /api/v1/{entityType}/{id}/artwork/{artworkId}/select:
-    post: { operationId: selectArtwork, summary: Requires metadata.manage; manual selection survives refresh, security: [{ bearerAuth: [] }], parameters: [{ name: entityType, in: path, required: true, schema: { type: string, enum: [movies, shows] } }, { name: id, in: path, required: true, schema: { type: string, format: uuid } }, { name: artworkId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: Artwork selected } } }
+  /api/v1/movies/{id}/artwork:
+    get: { operationId: listMovieArtwork, summary: Lists movie artwork without exposing cache paths, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Artwork candidates and selection state } } }
+  /api/v1/movies/{id}/artwork/{artworkId}/select:
+    post: { operationId: selectMovieArtwork, summary: Requires metadata.manage; caches selection and preserves it across refresh, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }, { name: artworkId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: Artwork selected and cached } } }
+  /api/v1/shows/{id}/artwork:
+    get: { operationId: listShowArtwork, summary: Lists show artwork without exposing cache paths, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Artwork candidates and selection state } } }
+  /api/v1/shows/{id}/artwork/{artworkId}/select:
+    post: { operationId: selectShowArtwork, summary: Requires metadata.manage; caches selection and preserves it across refresh, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }, { name: artworkId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: Artwork selected and cached } } }
   /api/v1/artwork/{artworkId}/content:
     get: { operationId: getArtworkContent, summary: Streams a controlled cached image with ETag, security: [{ bearerAuth: [] }], parameters: [{ name: artworkId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '200': { description: Cached image bytes }, '304': { description: Not modified } } }
 components:

@@ -64,6 +64,12 @@ CREATE TABLE metadata_jobs (id TEXT PRIMARY KEY,library_id TEXT,entity_type TEXT
 CREATE TABLE metadata_provider_cache (cache_key TEXT PRIMARY KEY,provider TEXT NOT NULL,response_json TEXT NOT NULL,expires_at TEXT NOT NULL,created_at TEXT NOT NULL);
 CREATE TABLE logical_library_memberships (library_id TEXT NOT NULL,entity_type TEXT NOT NULL,entity_id TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(library_id,entity_type,entity_id),FOREIGN KEY(library_id) REFERENCES libraries(id) ON DELETE CASCADE);
 CREATE INDEX idx_movies_sort ON movies(sort_title,year);CREATE INDEX idx_shows_sort ON shows(sort_title,year);CREATE INDEX idx_assoc_entity ON media_associations(entity_type,entity_id);CREATE INDEX idx_match_state ON metadata_match_attempts(state,updated_at);CREATE INDEX idx_artwork_entity ON artwork(entity_type,entity_id,artwork_type,selected);CREATE INDEX idx_metadata_jobs_library ON metadata_jobs(library_id,created_at DESC);
+`}, {5, "phase3_completion", `
+ALTER TABLE metadata_jobs ADD COLUMN total_files INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE metadata_jobs ADD COLUMN already_matched INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE movies ADD COLUMN last_metadata_error TEXT;
+ALTER TABLE shows ADD COLUMN last_metadata_error TEXT;
+CREATE INDEX idx_metadata_jobs_active ON metadata_jobs(library_id,state);
 `}}
 
 func (s *Store) Migrate(ctx context.Context) error {

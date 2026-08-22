@@ -140,6 +140,7 @@ func (h *Handler) manualMatch(w http.ResponseWriter, r *http.Request, p auth.Pri
 	if !decode(w, r, &in) {
 		return
 	}
+	wasMatched := h.metadata.HasAssociation(r.Context(), r.PathValue("fileId"))
 	var id string
 	var e error
 	if in.Type == "MOVIE" {
@@ -153,7 +154,11 @@ func (h *Handler) manualMatch(w http.ResponseWriter, r *http.Request, p auth.Pri
 		h.metadataError(w, r, e)
 		return
 	}
-	h.metadata.Audit(r.Context(), p.UserID, "MEDIA_MANUALLY_MATCHED", r.PathValue("fileId"), RequestID(r.Context()))
+	event := "MEDIA_MANUALLY_MATCHED"
+	if wasMatched {
+		event = "MEDIA_MATCH_CHANGED"
+	}
+	h.metadata.Audit(r.Context(), p.UserID, event, r.PathValue("fileId"), RequestID(r.Context()))
 	writeJSON(w, 200, map[string]string{"logicalId": id})
 }
 func (h *Handler) unmatch(w http.ResponseWriter, r *http.Request, p auth.Principal) {
@@ -167,6 +172,10 @@ func (h *Handler) unmatch(w http.ResponseWriter, r *http.Request, p auth.Princip
 func (h *Handler) identify(w http.ResponseWriter, r *http.Request, p auth.Principal) {
 	j, e := h.metadata.StartIdentify(r.Context(), r.PathValue("libraryId"))
 	if e != nil {
+		if errors.Is(e, metadata.ErrConflict) {
+			writeJSON(w, 409, j)
+			return
+		}
 		h.metadataError(w, r, e)
 		return
 	}
@@ -195,8 +204,12 @@ func (h *Handler) refreshLogical(w http.ResponseWriter, r *http.Request, p auth.
 	h.metadata.Audit(r.Context(), p.UserID, "METADATA_REFRESH_STARTED", r.PathValue("id"), RequestID(r.Context()))
 	w.WriteHeader(204)
 }
-func(h *Handler)movieArtwork(w http.ResponseWriter,r *http.Request,p auth.Principal){h.artworkList(w,r,p,"MOVIE")}
-func(h *Handler)showArtwork(w http.ResponseWriter,r *http.Request,p auth.Principal){h.artworkList(w,r,p,"SHOW")}
+func (h *Handler) movieArtwork(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+	h.artworkList(w, r, p, "MOVIE")
+}
+func (h *Handler) showArtwork(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+	h.artworkList(w, r, p, "SHOW")
+}
 func (h *Handler) artworkList(w http.ResponseWriter, r *http.Request, _ auth.Principal, kind string) {
 	v, e := h.metadata.Artwork(r.Context(), kind, r.PathValue("id"))
 	if e != nil {
@@ -205,8 +218,12 @@ func (h *Handler) artworkList(w http.ResponseWriter, r *http.Request, _ auth.Pri
 	}
 	writeJSON(w, 200, map[string]any{"artwork": v})
 }
-func(h *Handler)selectMovieArtwork(w http.ResponseWriter,r *http.Request,p auth.Principal){h.artworkSelect(w,r,p,"MOVIE")}
-func(h *Handler)selectShowArtwork(w http.ResponseWriter,r *http.Request,p auth.Principal){h.artworkSelect(w,r,p,"SHOW")}
+func (h *Handler) selectMovieArtwork(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+	h.artworkSelect(w, r, p, "MOVIE")
+}
+func (h *Handler) selectShowArtwork(w http.ResponseWriter, r *http.Request, p auth.Principal) {
+	h.artworkSelect(w, r, p, "SHOW")
+}
 func (h *Handler) artworkSelect(w http.ResponseWriter, r *http.Request, p auth.Principal, kind string) {
 	if e := h.metadata.SelectArtwork(r.Context(), kind, r.PathValue("id"), r.PathValue("artworkId")); e != nil {
 		h.metadataError(w, r, e)
