@@ -11,6 +11,7 @@ import (
 	"github.com/vynode/media/server/internal/media"
 	"github.com/vynode/media/server/internal/metadata"
 	"github.com/vynode/media/server/internal/observability"
+	"github.com/vynode/media/server/internal/offline"
 	"github.com/vynode/media/server/internal/playback"
 	"github.com/vynode/media/server/internal/sharing"
 	"log/slog"
@@ -45,6 +46,7 @@ type Handler struct {
 	curation      *curation.Service
 	observability *observability.Service
 	sharing       *sharing.Service
+	offline       *offline.Service
 	allowedOrigin string
 }
 type errorResponse struct {
@@ -68,6 +70,8 @@ func NewHandler(logger *slog.Logger, readiness Readiness, info SystemInfo, authS
 			h.observability = x
 		case *sharing.Service:
 			h.sharing = x
+		case *offline.Service:
+			h.offline = x
 		}
 	}
 	mux := http.NewServeMux()
@@ -98,6 +102,9 @@ func NewHandler(logger *slog.Logger, readiness Readiness, info SystemInfo, authS
 	}
 	if h.sharing != nil {
 		h.sharingRoutes(mux)
+	}
+	if h.offline != nil {
+		h.offlineRoutes(mux)
 	}
 	if info.WebDir != "" {
 		mux.Handle("/", spaHandler(info.WebDir))

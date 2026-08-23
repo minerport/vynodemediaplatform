@@ -16,8 +16,10 @@ services:
         target: /media
         read_only: true
       - vynode-transcode:/transcode
+      - vynode-downloads:/downloads
     restart: unless-stopped
     stop_grace_period: 15s
 volumes:
   vynode-config:
   vynode-transcode:
+  vynode-downloads:

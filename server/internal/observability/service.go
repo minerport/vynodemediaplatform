@@ -445,7 +445,7 @@ func (s *Service) Metrics(ctx context.Context) Metrics {
 	_ = s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM playback_sessions WHERE state IN ('STARTING','PLAYING','PAUSED')").Scan(&out.ActivePlaybackSessions)
 	_ = s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM playback_pipeline_instances WHERE state IN ('STARTING','RUNNING')").Scan(&out.ActiveFFmpegProcesses)
 	seen := map[string]bool{}
-	for label, p := range map[string]string{"Config": s.paths.Config, "Transcode": s.paths.Transcode, "Optimized": s.paths.Optimized} {
+	for label, p := range map[string]string{"Config": s.paths.Config, "Transcode": s.paths.Transcode, "Optimized": s.paths.Optimized, "Downloads": s.paths.Downloads} {
 		if p == "" {
 			continue
 		}
@@ -538,7 +538,7 @@ func (s *Service) Jobs(ctx context.Context, limit int) ([]Job, error) {
 	if limit < 1 || limit > 200 {
 		limit = 100
 	}
-	q := `SELECT id,'BACKGROUND',target_type||':'||target_id,state,progress,priority,created_at,COALESCE(started_at,''),COALESCE(completed_at,''),COALESCE(error_summary,'') FROM background_jobs UNION ALL SELECT id,'SCAN',library_id,state,CASE WHEN candidates_found>0 THEN CAST(files_probed AS REAL)/candidates_found ELSE 0 END,0,created_at,COALESCE(started_at,''),COALESCE(completed_at,''),COALESCE(error_summary,'') FROM scan_jobs UNION ALL SELECT id,'METADATA',COALESCE(library_id,entity_type||':'||entity_id),state,CASE WHEN total_files>0 THEN CAST(processed AS REAL)/total_files ELSE 0 END,0,created_at,COALESCE(started_at,''),COALESCE(completed_at,''),COALESCE(error_summary,'') FROM metadata_jobs ORDER BY created_at DESC LIMIT ?`
+	q := `SELECT id,'BACKGROUND',target_type||':'||target_id,state,progress,priority,created_at,COALESCE(started_at,''),COALESCE(completed_at,''),COALESCE(error_summary,'') FROM background_jobs UNION ALL SELECT id,'SCAN',library_id,state,CASE WHEN candidates_found>0 THEN CAST(files_probed AS REAL)/candidates_found ELSE 0 END,0,created_at,COALESCE(started_at,''),COALESCE(completed_at,''),COALESCE(error_summary,'') FROM scan_jobs UNION ALL SELECT id,'METADATA',COALESCE(library_id,entity_type||':'||entity_id),state,CASE WHEN total_files>0 THEN CAST(processed AS REAL)/total_files ELSE 0 END,0,created_at,COALESCE(started_at,''),COALESCE(completed_at,''),COALESCE(error_summary,'') FROM metadata_jobs UNION ALL SELECT id,'OFFLINE_DOWNLOAD',asset_id,state,progress,priority,created_at,COALESCE(started_at,''),COALESCE(completed_at,''),COALESCE(last_error,'') FROM download_jobs ORDER BY created_at DESC LIMIT ?`
 	rows, e := s.db.QueryContext(ctx, q, limit)
 	if e != nil {
 		return nil, e
@@ -603,7 +603,7 @@ func (s *Service) EvaluateHealth(ctx context.Context) ([]HealthIssue, error) {
 		}
 		rows.Close()
 	}
-	for label, path := range map[string]string{"CONFIG": s.paths.Config, "TRANSCODE": s.paths.Transcode, "OPTIMIZED": s.paths.Optimized} {
+	for label, path := range map[string]string{"CONFIG": s.paths.Config, "TRANSCODE": s.paths.Transcode, "OPTIMIZED": s.paths.Optimized, "DOWNLOADS": s.paths.Downloads} {
 		if path == "" {
 			continue
 		}
@@ -757,7 +757,7 @@ func (s *Service) Dashboard(ctx context.Context) (Dashboard, error) {
 		d.Health[k] = n
 	}
 	rows.Close()
-	_ = s.db.QueryRowContext(ctx, "SELECT (SELECT COUNT(*) FROM background_jobs WHERE state='FAILED')+(SELECT COUNT(*) FROM scan_jobs WHERE state='FAILED')+(SELECT COUNT(*) FROM metadata_jobs WHERE state='FAILED')").Scan(&d.FailedJobs)
+	_ = s.db.QueryRowContext(ctx, "SELECT (SELECT COUNT(*) FROM background_jobs WHERE state='FAILED')+(SELECT COUNT(*) FROM scan_jobs WHERE state='FAILED')+(SELECT COUNT(*) FROM metadata_jobs WHERE state='FAILED')+(SELECT COUNT(*) FROM download_jobs WHERE state IN ('FAILED','INTERRUPTED'))").Scan(&d.FailedJobs)
 	d.RecentEvents, _ = s.Events(ctx, 12, 0)
 	return d, nil
 }

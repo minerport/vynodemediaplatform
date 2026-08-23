@@ -36,3 +36,7 @@ Phase 10 adds no third-party runtime or chart dependency. Metrics, HMAC signing,
 # Phase 11 dependency note
 
 Phase 11 adds HashiCorp mDNS for local DNS-SD advertisement and huin/goupnp for opt-in UPnP IGD mapping. Both run locally; neither introduces a hosted service or cloud dependency. NAT-PMP and PCP are deliberately not claimed by this checkpoint.
+
+# Phase 12 dependency note
+
+Phase 12 adds no third-party runtime dependency. Durable offline MP4/H.264/AAC preparation reuses the existing FFmpeg/FFprobe installation; hashing, Range delivery, sync cursors, and filesystem safety use the Go standard library and SQLite.

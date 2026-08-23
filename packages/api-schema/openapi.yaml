@@ -309,6 +309,33 @@ paths:
   /api/v1/admin/remote-access:
     get: { operationId: getRemoteAccess, summary: OWNER only; reports configuration without claiming external reachability, security: [{ bearerAuth: [] }], responses: { '200': { description: Remote access diagnostics }, '403': { description: Denied } } }
     put: { operationId: updateRemoteAccess, summary: "OWNER only; validates URLs, IPv4/IPv6 CIDRs, explicit insecure opt-in and proxy trust", security: [{ bearerAuth: [] }], responses: { '200': { description: Updated diagnostics }, '400': { $ref: '#/components/responses/BadRequest' } } }
+  /api/v1/download-profiles:
+    get: { operationId: listDownloadProfiles, summary: Typed offline profiles independent of streaming quality, security: [{ bearerAuth: [] }], responses: { '200': { description: Offline quality profiles }, '403': { description: Paired device required } } }
+  /api/v1/admin/download-settings:
+    get: { operationId: getOfflineDownloadSettings, summary: Administrator cache quota and lifecycle summary, security: [{ bearerAuth: [] }], responses: { '200': { description: Download cache settings and counts }, '403': { description: Administrator required } } }
+    put: { operationId: updateOfflineDownloadSettings, summary: Updates the generated offline asset cache quota, security: [{ bearerAuth: [] }], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [cacheQuotaBytes], properties: { cacheQuotaBytes: { type: integer, format: int64, minimum: 0 } } } } } }, responses: { '200': { description: Updated download settings }, '400': { $ref: '#/components/responses/BadRequest' }, '403': { description: Administrator required } } }
+  /api/v1/downloads/plan:
+    post: { operationId: planOfflineDownload, summary: "Chooses original, existing optimized, or generated compatible media", security: [{ bearerAuth: [] }], requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/DownloadRequest' } } } }, responses: { '200': { description: Deterministic download plan }, '403': { description: DOWNLOAD permission required } } }
+  /api/v1/downloads:
+    get: { operationId: listDeviceDownloads, summary: Lists assignments bound to the authenticated paired device, security: [{ bearerAuth: [] }], responses: { '200': { description: Device download assignments }, '403': { description: Paired device required } } }
+    post: { operationId: createDeviceDownload, summary: Creates or reuses an immutable device-bound download asset, security: [{ bearerAuth: [] }], requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/DownloadRequest' } } } }, responses: { '201': { description: Managed download assignment }, '403': { description: DOWNLOAD permission or paired device required }, '409': { description: Storage policy prevents assignment } } }
+  /api/v1/downloads/{id}:
+    get: { operationId: getDeviceDownload, security: [{ bearerAuth: [] }], parameters: [{ $ref: '#/components/parameters/Id' }], responses: { '200': { description: Download state }, '404': { $ref: '#/components/responses/NotFound' } } }
+    delete: { operationId: requestDeviceDownloadRemoval, summary: Creates a removal instruction; device must acknowledge deletion, security: [{ bearerAuth: [] }], parameters: [{ $ref: '#/components/parameters/Id' }], responses: { '204': { description: Removal requested }, '404': { $ref: '#/components/responses/NotFound' } } }
+  /api/v1/downloads/{id}/manifest:
+    get: { operationId: getOfflineManifest, summary: "Versioned metadata, checksum, media and artwork contract for native clients", security: [{ bearerAuth: [] }], parameters: [{ $ref: '#/components/parameters/Id' }], responses: { '200': { description: Offline manifest }, '403': { description: Device or grant revoked } } }
+  /api/v1/downloads/{id}/file:
+    get: { operationId: downloadOfflineFile, summary: Authenticated device-bound immutable transfer with single HTTP Range resume and SHA-256 ETag, security: [{ bearerAuth: [] }], parameters: [{ $ref: '#/components/parameters/Id' }, { name: Range, in: header, schema: { type: string } }], responses: { '200': { description: Complete file }, '206': { description: Byte range }, '403': { description: Device or DOWNLOAD grant revoked }, '416': { description: Invalid range } } }
+    head: { operationId: headOfflineFile, summary: "Returns exact size, checksum ETag and safe filename without media bytes", security: [{ bearerAuth: [] }], parameters: [{ $ref: '#/components/parameters/Id' }], responses: { '200': { description: Transfer metadata }, '403': { description: Denied } } }
+  /api/v1/sync/changes:
+    get: { operationId: pullDeviceSyncChanges, summary: Bounded monotonic per-device change feed; old cursors require full resync, security: [{ bearerAuth: [] }], parameters: [{ name: cursor, in: query, schema: { type: integer, minimum: 0 } }, { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500 } }], responses: { '200': { description: Incremental sync changes }, '403': { description: Paired device required } } }
+  /api/v1/sync/state:
+    get: { operationId: getDeviceSyncState, summary: Bounded full state for only the authenticated device, security: [{ bearerAuth: [] }], responses: { '200': { description: "Downloads, subscriptions and cursor" }, '403': { description: Paired device required } } }
+  /api/v1/sync/push:
+    post: { operationId: pushDeviceSyncEvents, summary: "Idempotent offline progress, inventory and client-reported storage push", security: [{ bearerAuth: [] }], requestBody: { required: true, content: { application/json: { schema: { type: object } } } }, responses: { '200': { description: Reconciled state }, '400': { $ref: '#/components/responses/BadRequest' }, '403': { description: Ownership or grant denied } } }
+  /api/v1/download-subscriptions:
+    get: { operationId: listDownloadSubscriptions, security: [{ bearerAuth: [] }], responses: { '200': { description: Current device subscriptions }, '403': { description: Paired device required } } }
+    post: { operationId: upsertDownloadSubscription, summary: Maintains next N available unwatched episodes for this paired device, security: [{ bearerAuth: [] }], responses: { '201': { description: Subscription and resulting assignments }, '403': { description: DOWNLOAD access denied }, '409': { description: Device storage headroom reached } } }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
@@ -318,12 +345,20 @@ components:
     Unauthorized: { description: Authentication failed, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
     Conflict: { description: State conflict, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   parameters:
+    Id: { name: id, in: path, required: true, schema: { type: string } }
     LibraryId: { name: libraryId, in: path, required: true, schema: { type: string, format: uuid } }
     JobId: { name: jobId, in: path, required: true, schema: { type: string, format: uuid } }
     PlaybackSessionId: { name: sessionId, in: path, required: true, schema: { type: string, format: uuid } }
     LogicalType: { name: logicalType, in: path, required: true, schema: { type: string, enum: [MOVIE, EPISODE] } }
     LogicalId: { name: logicalId, in: path, required: true, schema: { type: string, format: uuid } }
   schemas:
+    DownloadRequest:
+      type: object
+      required: [logicalType, logicalId, profileId]
+      properties:
+        logicalType: { type: string, enum: [MOVIE, EPISODE] }
+        logicalId: { type: string }
+        profileId: { type: string, enum: [ORIGINAL, HIGH, MEDIUM, LOW] }
     PlaybackStart:
       type: object
       required: [logicalType, logicalId, resume, capabilities]

@@ -205,7 +205,7 @@ func (s *Service) SetGrants(ctx context.Context, actor, userID string, grants []
 	now := stamp(s.now())
 	for _, g := range grants {
 		for _, p := range g.Permissions {
-			if p != "VIEW" && p != "PLAY" {
+			if p != "VIEW" && p != "PLAY" && p != "DOWNLOAD" {
 				return ErrInvalid
 			}
 			if _, e = tx.ExecContext(ctx, "INSERT INTO library_access_grants(user_id,library_id,permission,granted_by,created_at) VALUES(?,?,?,?,?)", userID, g.LibraryID, p, actor, now); e != nil {
@@ -214,6 +214,9 @@ func (s *Service) SetGrants(ctx context.Context, actor, userID string, grants []
 		}
 	}
 	_, _ = tx.ExecContext(ctx, "UPDATE playback_sessions SET state='STOPPED',completion_reason='LIBRARY_ACCESS_REVOKED',ended_at=?,last_activity_at=? WHERE user_id=? AND state IN ('STARTING','PLAYING','PAUSED') AND NOT EXISTS(SELECT 1 FROM media_files f JOIN library_sources src ON src.id=f.source_id JOIN library_access_grants g ON g.library_id=src.library_id AND g.user_id=playback_sessions.user_id AND g.permission='PLAY' WHERE f.id=playback_sessions.media_file_id)", now, now, userID)
+	_, _ = tx.ExecContext(ctx, `INSERT INTO sync_changes(user_id,device_id,change_type,entity_type,entity_id,payload_json,created_at) SELECT d.user_id,d.device_id,'DOWNLOAD_REVOKED','DOWNLOAD',d.id,'{}',? FROM device_downloads d WHERE d.user_id=? AND d.status NOT IN ('REMOVED','REVOKED') AND NOT EXISTS(SELECT 1 FROM media_associations a JOIN media_files f ON f.id=a.media_file_id JOIN library_sources src ON src.id=f.source_id JOIN library_access_grants g ON g.library_id=src.library_id AND g.user_id=d.user_id AND g.permission='DOWNLOAD' WHERE a.entity_type=d.logical_type AND a.entity_id=d.logical_id)`, now, userID)
+	_, _ = tx.ExecContext(ctx, "UPDATE device_downloads SET status='REVOKED',revoked_at=?,updated_at=? WHERE user_id=? AND status NOT IN ('REMOVED','REVOKED') AND NOT EXISTS(SELECT 1 FROM media_associations a JOIN media_files f ON f.id=a.media_file_id JOIN library_sources src ON src.id=f.source_id JOIN library_access_grants g ON g.library_id=src.library_id AND g.user_id=device_downloads.user_id AND g.permission='DOWNLOAD' WHERE a.entity_type=device_downloads.logical_type AND a.entity_id=device_downloads.logical_id)", now, now, userID)
+	_, _ = tx.ExecContext(ctx, "UPDATE download_subscriptions SET status='REVOKED',enabled=0,updated_at=? WHERE user_id=? AND status!='REVOKED' AND NOT EXISTS(SELECT 1 FROM seasons se JOIN episodes ep ON ep.season_id=se.id JOIN media_associations a ON a.entity_type='EPISODE' AND a.entity_id=ep.id JOIN media_files f ON f.id=a.media_file_id JOIN library_sources src ON src.id=f.source_id JOIN library_access_grants g ON g.library_id=src.library_id AND g.user_id=download_subscriptions.user_id AND g.permission='DOWNLOAD' WHERE se.show_id=download_subscriptions.show_id)", now, userID)
 	return tx.Commit()
 }
 
