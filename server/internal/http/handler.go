@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"github.com/vynode/media/server/internal/auth"
+	connectservice "github.com/vynode/media/server/internal/connect"
 	"github.com/vynode/media/server/internal/curation"
 	"github.com/vynode/media/server/internal/intelligence"
 	"github.com/vynode/media/server/internal/media"
@@ -47,6 +48,7 @@ type Handler struct {
 	observability *observability.Service
 	sharing       *sharing.Service
 	offline       *offline.Service
+	connect       *connectservice.Service
 	allowedOrigin string
 }
 type errorResponse struct {
@@ -72,6 +74,8 @@ func NewHandler(logger *slog.Logger, readiness Readiness, info SystemInfo, authS
 			h.sharing = x
 		case *offline.Service:
 			h.offline = x
+		case *connectservice.Service:
+			h.connect = x
 		}
 	}
 	mux := http.NewServeMux()
@@ -105,6 +109,9 @@ func NewHandler(logger *slog.Logger, readiness Readiness, info SystemInfo, authS
 	}
 	if h.offline != nil {
 		h.offlineRoutes(mux)
+	}
+	if h.connect != nil {
+		h.connectRoutes(mux)
 	}
 	if info.WebDir != "" {
 		mux.Handle("/", spaHandler(info.WebDir))

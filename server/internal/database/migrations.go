@@ -251,6 +251,25 @@ CREATE TRIGGER sync_artwork_selection_update AFTER UPDATE OF selected,manual_sel
   INSERT INTO sync_changes(user_id,device_id,change_type,entity_type,entity_id,payload_json,created_at)
   SELECT DISTINCT d.user_id,d.device_id,'ARTWORK_UPDATED',d.logical_type,d.logical_id,json_object('artworkId',NEW.id,'artworkType',NEW.artwork_type,'selected',NEW.selected,'etag',COALESCE(NEW.etag,'')),CURRENT_TIMESTAMP FROM device_downloads d WHERE ((NEW.entity_type='MOVIE' AND d.logical_type='MOVIE' AND d.logical_id=NEW.entity_id) OR (NEW.entity_type='EPISODE' AND d.logical_type='EPISODE' AND d.logical_id=NEW.entity_id) OR (NEW.entity_type='SHOW' AND d.logical_type='EPISODE' AND EXISTS(SELECT 1 FROM episodes ep JOIN seasons se ON se.id=ep.season_id WHERE ep.id=d.logical_id AND se.show_id=NEW.entity_id))) AND d.status NOT IN ('REMOVED','REVOKED');
 END;
+`}, {16, "connect_identity_links", `
+CREATE TABLE connect_settings (id INTEGER PRIMARY KEY CHECK(id=1),enabled INTEGER NOT NULL DEFAULT 0,connect_url TEXT NOT NULL DEFAULT '',connect_issuer TEXT NOT NULL DEFAULT '',connect_signing_keys_json TEXT NOT NULL DEFAULT '{"keys":[]}',last_contact_at TEXT,last_error TEXT NOT NULL DEFAULT '',updated_at TEXT NOT NULL);
+INSERT INTO connect_settings(id,updated_at) VALUES(1,CURRENT_TIMESTAMP);
+CREATE TABLE server_connect_identity (id INTEGER PRIMARY KEY CHECK(id=1),server_id TEXT NOT NULL UNIQUE,public_key TEXT NOT NULL,private_key_path TEXT NOT NULL,claim_status TEXT NOT NULL DEFAULT 'UNREGISTERED' CHECK(claim_status IN ('UNREGISTERED','PENDING','CLAIMED','REVOKED')),updated_at TEXT NOT NULL);
+CREATE TABLE global_account_links (global_account_id TEXT PRIMARY KEY,user_id TEXT NOT NULL UNIQUE,status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK(status IN ('ACTIVE','REVOKED')),linked_by_user_id TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,FOREIGN KEY(linked_by_user_id) REFERENCES users(id));
+CREATE TABLE connect_assertion_nonces (nonce TEXT PRIMARY KEY,global_account_id TEXT NOT NULL,expires_at TEXT NOT NULL,consumed_at TEXT NOT NULL);
+CREATE TABLE connect_link_requests (id TEXT PRIMARY KEY,state_hash TEXT NOT NULL UNIQUE,user_id TEXT NOT NULL,session_id TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('PENDING','CONSUMED','EXPIRED')),expires_at TEXT NOT NULL,created_at TEXT NOT NULL,consumed_at TEXT,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
+CREATE INDEX idx_global_account_links_user_status ON global_account_links(user_id,status);
+CREATE INDEX idx_connect_assertion_nonce_expiry ON connect_assertion_nonces(expires_at);
+CREATE INDEX idx_connect_link_requests_expiry ON connect_link_requests(status,expires_at);
+`}, {17, "connect_global_invitations", `
+ALTER TABLE users ADD COLUMN authentication_type TEXT NOT NULL DEFAULT 'LOCAL' CHECK(authentication_type IN ('LOCAL','GLOBAL_LINKED'));
+CREATE TABLE connect_global_invitation_intents (id TEXT PRIMARY KEY,intended_username TEXT NOT NULL DEFAULT '',display_name TEXT NOT NULL DEFAULT '',intended_role TEXT NOT NULL CHECK(intended_role IN ('ADMIN','USER')),intent_digest TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('DRAFT','PENDING','REDEEMED','REVOKED','EXPIRED')),created_by_user_id TEXT NOT NULL,created_at TEXT NOT NULL,expires_at TEXT NOT NULL,redeemed_at TEXT,redeemed_global_account_id TEXT UNIQUE,redeemed_user_id TEXT UNIQUE,FOREIGN KEY(created_by_user_id) REFERENCES users(id),FOREIGN KEY(redeemed_user_id) REFERENCES users(id));
+CREATE TABLE connect_global_invitation_grants (invitation_id TEXT NOT NULL,library_id TEXT NOT NULL,permission TEXT NOT NULL CHECK(permission IN ('VIEW','PLAY','DOWNLOAD')),PRIMARY KEY(invitation_id,library_id,permission),FOREIGN KEY(invitation_id) REFERENCES connect_global_invitation_intents(id) ON DELETE CASCADE,FOREIGN KEY(library_id) REFERENCES libraries(id) ON DELETE CASCADE);
+CREATE TABLE connect_invitation_redemption_nonces (jti TEXT PRIMARY KEY,invitation_id TEXT NOT NULL,global_account_id TEXT NOT NULL,expires_at TEXT NOT NULL,consumed_at TEXT NOT NULL,FOREIGN KEY(invitation_id) REFERENCES connect_global_invitation_intents(id));
+CREATE INDEX idx_connect_global_invites_status_expiry ON connect_global_invitation_intents(status,expires_at);
+`}, {18, "connect_global_device_sessions", `
+CREATE TABLE connect_global_device_sessions (global_device_id TEXT NOT NULL,global_account_id TEXT NOT NULL,local_session_id TEXT NOT NULL UNIQUE,created_at TEXT NOT NULL,revoked_at TEXT,PRIMARY KEY(global_device_id,local_session_id),FOREIGN KEY(local_session_id) REFERENCES sessions(id) ON DELETE CASCADE);
+CREATE INDEX idx_connect_global_device_sessions_device ON connect_global_device_sessions(global_device_id,revoked_at);
 `}}
 
 func (s *Store) Migrate(ctx context.Context) error {
