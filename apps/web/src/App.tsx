@@ -48,7 +48,18 @@ export function App() {
           return;
         }
         try {
-          const u = await api.refresh();
+          const assertion = new URLSearchParams(location.hash.slice(1)).get(
+            "connect_assertion",
+          );
+          const redemption = new URLSearchParams(location.hash.slice(1)).get(
+            "connect_invitation_redemption",
+          );
+          if (assertion || redemption)
+            history.replaceState({}, "", location.pathname);
+          if (redemption) await api.redeemConnectInvitation(redemption);
+          const u = assertion
+            ? await api.connectExchange(assertion)
+            : await api.refresh();
           setUser(u);
           setInfo(await api.info());
           if (requested() === "setup" || requested() === "login") go("home");
