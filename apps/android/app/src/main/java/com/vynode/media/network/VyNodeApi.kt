@@ -58,6 +58,7 @@ class VyNodeApi(endpoint: String, private val client: OkHttpClient = OkHttpClien
     }
 
     suspend fun exchange(pairing: PairingRequest): RotatedSession = postJson("/api/v1/pairing/requests/${pairing.id}/exchange", JSONObject().put("challenge", pairing.challenge), native = true).session()
+	suspend fun exchangeConnect(assertion:String):RotatedSession=postJson("/api/v1/connect/exchange",JSONObject().put("assertion",assertion).put("device",JSONObject().put("name",android.os.Build.MODEL).put("clientName","VyNode Android").put("platform","ANDROID").put("platformVersion",android.os.Build.VERSION.RELEASE)),native=true).session()
 
     override suspend fun rotate(refreshToken: String): RotatedSession = postJson("/api/v1/auth/refresh", JSONObject().put("refreshToken", refreshToken), native = true).session()
 

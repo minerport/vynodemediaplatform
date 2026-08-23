@@ -50,6 +50,7 @@ import com.vynode.media.discovery.VyNodeDiscovery
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.vynode.media.connect.ConnectedServer
 
 class MainActivity : ComponentActivity() {
     private var controller: AppController? = null
@@ -82,10 +83,13 @@ private fun formatPlayerTime(milliseconds: Long): String {
 
 @Composable fun VyNodeApp(controller: AppController, tv: Boolean) {
     when (val screen = controller.screen.collectAsStateWithLifecycle().value) {
+        AppScreen.GlobalSignIn -> GlobalSignInScreen(tv,controller::globalLogin,controller::globalRegister,controller::beginTvGlobalSignIn,controller::advancedConnect)
+        is AppScreen.GlobalDeviceCode -> GlobalDeviceCodeScreen(screen)
+        is AppScreen.ServerPicker -> ServerPickerScreen(screen,controller::selectGlobalServer,controller::advancedConnect)
         AppScreen.Connect -> ConnectScreen(tv, controller::connect)
         is AppScreen.ConfirmInsecure -> ConfirmInsecure(screen.endpoint) { controller.connect(screen.endpoint, true) }
         is AppScreen.Pair -> PairScreen(screen)
-        is AppScreen.Home -> VyNodeHome(tv, screen.rows.map { row -> HomeRow(row.id, row.title, row.items.map(::HomeCard)) }, controller::open, screen.focusId, controller::openSearch)
+        is AppScreen.Home -> VyNodeHome(tv, screen.rows.map { row -> HomeRow(row.id, row.title, row.items.map(::HomeCard)) }, controller::open, screen.focusId, controller::openSearch,controller::chooseGlobalServer,controller::globalLogout)
         is AppScreen.Movie -> MovieScreen(screen, controller)
         is AppScreen.Playing -> PlayerScreen(screen, controller)
         is AppScreen.Show -> ShowScreen(screen, controller::play, controller::startOver, controller::download, controller::returnFromDetail, tv)
@@ -96,6 +100,12 @@ private fun formatPlayerTime(milliseconds: Long): String {
         is AppScreen.IdentityMismatch -> MessageScreen("This address now identifies as ${screen.received.serverName}. Credentials were not sent.", controller::retry)
     }
 }
+
+@Composable private fun GlobalSignInScreen(tv:Boolean,login:(String,String)->Unit,register:(String,String,String)->Unit,tvCode:()->Unit,advanced:()->Unit){var username by remember{mutableStateOf("")};var displayName by remember{mutableStateOf("")};var password by remember{mutableStateOf("")};var creating by remember{mutableStateOf(false)};Column(Modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color(0x55317767),VyNodeColor.Background),radius=1100f)).padding(if(tv)64.dp else 24.dp),verticalArrangement=Arrangement.Center,horizontalAlignment=androidx.compose.ui.Alignment.CenterHorizontally){Surface(Modifier.widthIn(max=620.dp),color=VyNodeColor.Surface,shape=VyNodeRadius.large){Column(Modifier.padding(if(tv)40.dp else 24.dp),verticalArrangement=Arrangement.spacedBy(16.dp)){Text("VYNODE MEDIA",color=VyNodeColor.Accent,style=MaterialTheme.typography.labelLarge);Text("Welcome to VyNode",style=MaterialTheme.typography.headlineLarge);Text("Sign in once to find the servers linked to your account.",color=VyNodeColor.Muted);if(tv){VyNodePrimaryButton("Sign In to VyNode",onClick=tvCode)}else{OutlinedTextField(username,{username=it},label={Text("Username")},singleLine=true,modifier=Modifier.fillMaxWidth());if(creating)OutlinedTextField(displayName,{displayName=it},label={Text("Display name")},singleLine=true,modifier=Modifier.fillMaxWidth());OutlinedTextField(password,{password=it},label={Text("Password")},singleLine=true,visualTransformation=androidx.compose.ui.text.input.PasswordVisualTransformation(),modifier=Modifier.fillMaxWidth());VyNodePrimaryButton(if(creating)"Create VyNode Account" else "Sign In to VyNode",enabled=username.isNotBlank()&&password.isNotBlank()&&(!creating||displayName.isNotBlank())){if(creating)register(username,displayName,password)else login(username,password)};TextButton(onClick={creating=!creating}){Text(if(creating)"Already have an account? Sign in" else "Create Account")}};TextButton(onClick=advanced){Text("Advanced · Connect manually")}}}}}
+
+@Composable private fun GlobalDeviceCodeScreen(screen:AppScreen.GlobalDeviceCode)=Column(Modifier.fillMaxSize().padding(64.dp),verticalArrangement=Arrangement.Center,horizontalAlignment=androidx.compose.ui.Alignment.CenterHorizontally){Text("Sign in to VyNode",style=MaterialTheme.typography.headlineLarge);Text("Open ${BuildConfig.CONNECT_BASE_URL}${screen.verificationPath} and enter",color=VyNodeColor.Muted);Text(screen.userCode,style=MaterialTheme.typography.displayLarge,color=VyNodeColor.Accent,modifier=Modifier.padding(24.dp));Text("Waiting for approval…")}
+
+@Composable private fun ServerPickerScreen(screen:AppScreen.ServerPicker,select:(ConnectedServer)->Unit,advanced:()->Unit){Column(Modifier.fillMaxSize().padding(32.dp),verticalArrangement=Arrangement.spacedBy(18.dp)){Text("Linked Servers",style=MaterialTheme.typography.headlineLarge);screen.message?.let{Text(it,color=VyNodeColor.Muted)};screen.servers.forEach{server->OutlinedCard(onClick={select(server)},modifier=Modifier.fillMaxWidth()){Column(Modifier.padding(22.dp)){Text(server.name,style=MaterialTheme.typography.titleLarge);Text(server.relationship.lowercase().replaceFirstChar(Char::uppercase),color=VyNodeColor.Muted)}}};TextButton(onClick=advanced){Text("Advanced · Connect manually")}}}
 
 @Composable private fun MovieScreen(screen: AppScreen.Movie, controller: AppController) {
     BackHandler { controller.returnFromDetail() }
@@ -185,7 +195,7 @@ private fun formatPlayerTime(milliseconds: Long): String {
     Column(Modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color(0x55317767),VyNodeColor.Background),radius=1100f)).padding(if(tv) 64.dp else 24.dp), verticalArrangement=Arrangement.Center,horizontalAlignment=androidx.compose.ui.Alignment.CenterHorizontally) {
       Surface(Modifier.widthIn(max=if(tv) 680.dp else 520.dp),color=VyNodeColor.Surface,shape=VyNodeRadius.large,shadowElevation=16.dp){Column(Modifier.padding(if(tv) 40.dp else 24.dp)){
         Text("VYNODE MEDIA",style=MaterialTheme.typography.labelLarge,color=VyNodeColor.Accent)
-        Spacer(Modifier.height(8.dp));Text("Connect to your server", style=MaterialTheme.typography.headlineLarge)
+        Spacer(Modifier.height(8.dp));Text("Connect manually", style=MaterialTheme.typography.headlineLarge)
         Text("Choose a discovered VyNode server or enter a trusted address.",color=VyNodeColor.Muted)
         Spacer(Modifier.height(20.dp))
         OutlinedTextField(endpoint, { endpoint=it }, label={Text("Server address")}, singleLine=true, modifier=Modifier.fillMaxWidth())
@@ -216,9 +226,9 @@ private fun formatPlayerTime(milliseconds: Long): String {
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable fun VyNodeHome(tv: Boolean, rows: List<HomeRow>, play: (ApiHomeItem) -> Unit = {}, focusId:String?=null, search:()->Unit={}) {
+@Composable fun VyNodeHome(tv: Boolean, rows: List<HomeRow>, play: (ApiHomeItem) -> Unit = {}, focusId:String?=null, search:()->Unit={},servers:()->Unit={},logout:()->Unit={}) {
     val searchRequester=remember{FocusRequester()}
-    Scaffold(containerColor=VyNodeColor.Background,topBar={ TopAppBar(colors=TopAppBarDefaults.topAppBarColors(containerColor=VyNodeColor.Background.copy(alpha=.94f)),title={Column{Text("VyNode",style=MaterialTheme.typography.titleLarge);Text("MEDIA",style=MaterialTheme.typography.labelSmall,color=VyNodeColor.Accent)}},actions={VyNodeSecondaryButton("Search",modifier=Modifier.padding(end=if(tv) 32.dp else 12.dp).focusRequester(searchRequester),onClick=search)}) }) { padding ->
+    Scaffold(containerColor=VyNodeColor.Background,topBar={ TopAppBar(colors=TopAppBarDefaults.topAppBarColors(containerColor=VyNodeColor.Background.copy(alpha=.94f)),title={Column{Text("VyNode",style=MaterialTheme.typography.titleLarge);Text("MEDIA",style=MaterialTheme.typography.labelSmall,color=VyNodeColor.Accent)}},actions={VyNodeSecondaryButton("Servers",onClick=servers);VyNodeSecondaryButton("Sign out",onClick=logout);VyNodeSecondaryButton("Search",modifier=Modifier.padding(end=if(tv) 32.dp else 12.dp).focusRequester(searchRequester),onClick=search)}) }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding).background(Brush.radialGradient(listOf(Color(0x332A7164),Color.Transparent),radius=1300f)).padding(horizontal=if(tv) 64.dp else 16.dp), verticalArrangement=Arrangement.spacedBy(if(tv) 32.dp else 22.dp)) {
             itemsIndexed(rows, key={_,row->row.id}) { rowIndex,row ->
                 Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
