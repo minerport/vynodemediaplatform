@@ -67,6 +67,9 @@ func TestMediaAuthorizationStaleAndRevoked(t *testing.T) {
 	if _, err = s.AuthorizeMedia(ctx, x.ID, "wrong"); err != ErrForbidden {
 		t.Fatalf("wrong token=%v", err)
 	}
+	if owner, ownerErr := s.AuthorizeMediaForOwner(ctx, x.ID); ownerErr != nil || owner.Size != 16 {
+		t.Fatalf("owner bearer access=%+v err=%v", owner, ownerErr)
+	}
 	if err = os.WriteFile(path, []byte("changed"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -108,8 +111,20 @@ func TestWatchedNearRulesAndActive(t *testing.T) {
 		t.Fatal(err)
 	}
 	p, _ := s.Progress(ctx, "u1", "MOVIE", "m")
-	if !p.Watched || p.Position != 0 {
+	if !p.Watched || p.Position != 91 {
 		t.Fatalf("progress=%+v", p)
+	}
+	if _, err := s.AuthorizeMediaForOwner(ctx, x.ID); err != nil {
+		t.Fatalf("near-end inference ended active playback: %v", err)
+	}
+	if err := s.Update(ctx, "u1", x.ID, Progress{State: Playing, Position: 95, Duration: 100}); err != nil {
+		t.Fatalf("seek after near-end inference failed: %v", err)
+	}
+	if _, err := s.AuthorizeMediaForOwner(ctx, x.ID); err != nil {
+		t.Fatalf("media unavailable after seek from near-end: %v", err)
+	}
+	if err := s.Stop(ctx, "u1", x.ID); err != nil {
+		t.Fatal(err)
 	}
 	next, _ := s.Start(ctx, "u1", "s1", r)
 	if next.ResumePosition != 0 {

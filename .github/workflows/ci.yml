@@ -30,3 +30,17 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         with: { context: ., file: deploy/docker/Dockerfile, push: false }
+  android:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: apps/android } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17', cache: gradle }
+      - uses: android-actions/setup-android@v3
+      - run: chmod +x gradlew
+      - run: ./gradlew testDebugUnitTest lintDebug assembleDebug assembleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vynode-android-apks
+          path: apps/android/app/build/outputs/apk/**/*.apk

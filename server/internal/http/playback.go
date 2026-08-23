@@ -285,7 +285,18 @@ func (h *Handler) playbackHLS(w http.ResponseWriter, r *http.Request) {
 	if c, e := r.Cookie(mediaCookie(r.PathValue("sessionId"))); e == nil {
 		token = c.Value
 	}
-	p, e := h.playback.HLSFile(r.Context(), r.PathValue("sessionId"), token, r.PathValue("file"))
+	var p string
+	var e error
+	if raw := bearer(r); raw != "" {
+		principal, authErr := h.auth.Authenticate(raw)
+		if authErr != nil || !h.playback.OwnedBy(r.Context(), r.PathValue("sessionId"), principal.UserID, principal.SessionID) {
+			h.playbackError(w, r, playback.ErrForbidden)
+			return
+		}
+		p, e = h.playback.HLSFileForOwner(r.Context(), r.PathValue("sessionId"), r.PathValue("file"))
+	} else {
+		p, e = h.playback.HLSFile(r.Context(), r.PathValue("sessionId"), token, r.PathValue("file"))
+	}
 	if e != nil {
 		h.playbackError(w, r, e)
 		return
@@ -307,14 +318,22 @@ func (h *Handler) playbackMedia(w http.ResponseWriter, r *http.Request) {
 	if c, e := r.Cookie(mediaCookie(r.PathValue("sessionId"))); e == nil {
 		token = c.Value
 	}
+	ownerVerified := false
 	if bearer(r) != "" {
 		p, e := h.auth.Authenticate(bearer(r))
 		if e != nil || !h.playback.OwnedBy(r.Context(), r.PathValue("sessionId"), p.UserID, p.SessionID) {
 			h.playbackError(w, r, playback.ErrForbidden)
 			return
 		}
+		ownerVerified = true
 	}
-	a, err := h.playback.AuthorizeMedia(r.Context(), r.PathValue("sessionId"), token)
+	var a playback.MediaAccess
+	var err error
+	if ownerVerified {
+		a, err = h.playback.AuthorizeMediaForOwner(r.Context(), r.PathValue("sessionId"))
+	} else {
+		a, err = h.playback.AuthorizeMedia(r.Context(), r.PathValue("sessionId"), token)
+	}
 	if err != nil {
 		h.playbackError(w, r, err)
 		return
@@ -382,7 +401,18 @@ func (h *Handler) playbackSubtitle(w http.ResponseWriter, r *http.Request) {
 	if c, e := r.Cookie(mediaCookie(r.PathValue("sessionId"))); e == nil {
 		token = c.Value
 	}
-	b, e := h.playback.Subtitle(r.Context(), r.PathValue("sessionId"), token, r.PathValue("trackId"))
+	var b []byte
+	var e error
+	if raw := bearer(r); raw != "" {
+		principal, authErr := h.auth.Authenticate(raw)
+		if authErr != nil || !h.playback.OwnedBy(r.Context(), r.PathValue("sessionId"), principal.UserID, principal.SessionID) {
+			h.playbackError(w, r, playback.ErrForbidden)
+			return
+		}
+		b, e = h.playback.SubtitleForOwner(r.Context(), r.PathValue("sessionId"), r.PathValue("trackId"))
+	} else {
+		b, e = h.playback.Subtitle(r.Context(), r.PathValue("sessionId"), token, r.PathValue("trackId"))
+	}
 	if e != nil {
 		h.playbackError(w, r, e)
 		return

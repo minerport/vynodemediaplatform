@@ -431,9 +431,9 @@ func (s *Service) Update(ctx context.Context, userID, sessionID string, p Progre
 	var postCredits int
 	_ = s.db.QueryRowContext(ctx, "SELECT MIN(start_seconds) FROM media_markers WHERE logical_type=? AND logical_id=? AND marker_type='CREDITS' AND active=1 AND review_state='ACCEPTED'", logicalType, logicalID).Scan(&creditsStart)
 	_ = s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_markers WHERE logical_type=? AND logical_id=? AND marker_type='POST_CREDITS' AND active=1 AND review_state='ACCEPTED'", logicalType, logicalID).Scan(&postCredits)
-	watched := p.State == Completed || (creditsStart.Valid && postCredits == 0 && p.Position >= creditsStart.Float64) || (!creditsStart.Valid && p.Duration > 0 && p.Position/p.Duration >= .9)
-	if watched {
-		p.State = Completed
+	explicitlyCompleted := p.State == Completed
+	watched := explicitlyCompleted || (creditsStart.Valid && postCredits == 0 && p.Position >= creditsStart.Float64) || (!creditsStart.Valid && p.Duration > 0 && p.Position/p.Duration >= .9)
+	if explicitlyCompleted {
 		p.Position = 0
 	}
 	now := s.now().UTC()
@@ -518,12 +518,35 @@ type MediaAccess struct {
 }
 
 func (s *Service) AuthorizeMedia(ctx context.Context, sessionID, token string) (MediaAccess, error) {
+	return s.authorizeMedia(ctx, sessionID, token, false)
+}
+
+// AuthorizeMediaForOwner is used only after the HTTP layer has authenticated
+// the bearer and verified that both its user and auth-session own playback.
+// Native clients therefore do not also need the browser media cookie.
+func (s *Service) AuthorizeMediaForOwner(ctx context.Context, sessionID string) (MediaAccess, error) {
+	return s.authorizeMedia(ctx, sessionID, "", true)
+}
+
+func (s *Service) mediaAuthorization(ctx context.Context, sessionID string) (MediaAccess, error) {
+	return s.AuthorizeMediaForOwner(ctx, sessionID)
+}
+
+func (s *Service) authorizeMedia(ctx context.Context, sessionID, token string, ownerVerified bool) (MediaAccess, error) {
 	sum := sha256.Sum256([]byte(token))
 	var a MediaAccess
 	var root, rel string
 	var storedSize, storedMtime int64
 	var state, expiry, mode, planJSON string
-	err := s.db.QueryRowContext(ctx, `SELECT src.normalized_path,f.relative_path,f.size_bytes,f.modified_at_ns,p.state,p.media_token_expires_at,f.extension,p.mode,p.pipeline_plan_json,COALESCE(ms.stream_index,-1) FROM playback_sessions p JOIN media_files f ON f.id=p.media_file_id JOIN library_sources src ON src.id=f.source_id JOIN sessions s ON s.id=p.auth_session_id JOIN users u ON u.id=p.user_id LEFT JOIN media_streams ms ON ms.id=p.selected_audio_track_id WHERE p.id=? AND p.mode IN ('DIRECT_PLAY','DIRECT_STREAM','AUDIO_TRANSCODE','VIDEO_TRANSCODE') AND p.media_token_hash=? AND f.availability='AVAILABLE' AND s.revoked_at IS NULL AND s.expires_at>? AND u.status='ACTIVE'`, sessionID, hex.EncodeToString(sum[:]), stamp(s.now())).Scan(&root, &rel, &storedSize, &storedMtime, &state, &expiry, &a.MIME, &mode, &planJSON, &a.AudioStreamIndex)
+	query := `SELECT src.normalized_path,f.relative_path,f.size_bytes,f.modified_at_ns,p.state,p.media_token_expires_at,f.extension,p.mode,p.pipeline_plan_json,COALESCE(ms.stream_index,-1) FROM playback_sessions p JOIN media_files f ON f.id=p.media_file_id JOIN library_sources src ON src.id=f.source_id JOIN sessions s ON s.id=p.auth_session_id JOIN users u ON u.id=p.user_id LEFT JOIN media_streams ms ON ms.id=p.selected_audio_track_id WHERE p.id=? AND p.mode IN ('DIRECT_PLAY','DIRECT_STREAM','AUDIO_TRANSCODE','VIDEO_TRANSCODE')`
+	args := []any{sessionID}
+	if !ownerVerified {
+		query += " AND p.media_token_hash=?"
+		args = append(args, hex.EncodeToString(sum[:]))
+	}
+	query += " AND f.availability='AVAILABLE' AND s.revoked_at IS NULL AND s.expires_at>? AND u.status='ACTIVE'"
+	args = append(args, stamp(s.now()))
+	err := s.db.QueryRowContext(ctx, query, args...).Scan(&root, &rel, &storedSize, &storedMtime, &state, &expiry, &a.MIME, &mode, &planJSON, &a.AudioStreamIndex)
 	if err != nil {
 		return a, ErrForbidden
 	}
@@ -591,7 +614,23 @@ func (s *Service) StreamGenerated(ctx context.Context, a MediaAccess, start floa
 	return e
 }
 func (s *Service) HLSFile(ctx context.Context, sessionID, token, name string) (string, error) {
-	a, e := s.AuthorizeMedia(ctx, sessionID, token)
+	return s.hlsFile(ctx, sessionID, token, name, false)
+}
+
+// HLSFileForOwner is used only after the HTTP layer has authenticated the
+// bearer session and verified that it owns the playback session.
+func (s *Service) HLSFileForOwner(ctx context.Context, sessionID, name string) (string, error) {
+	return s.hlsFile(ctx, sessionID, "", name, true)
+}
+
+func (s *Service) hlsFile(ctx context.Context, sessionID, token, name string, ownerVerified bool) (string, error) {
+	var a MediaAccess
+	var e error
+	if ownerVerified {
+		a, e = s.mediaAuthorization(ctx, sessionID)
+	} else {
+		a, e = s.AuthorizeMedia(ctx, sessionID, token)
+	}
 	if e != nil {
 		return "", e
 	}
@@ -673,7 +712,22 @@ func (s *Service) Capabilities() FFmpegCapabilities {
 	return c
 }
 func (s *Service) Subtitle(ctx context.Context, sessionID, token, trackID string) ([]byte, error) {
-	a, e := s.AuthorizeMedia(ctx, sessionID, token)
+	return s.subtitle(ctx, sessionID, token, trackID, false)
+}
+
+// SubtitleForOwner mirrors HLSFileForOwner for authenticated native clients.
+func (s *Service) SubtitleForOwner(ctx context.Context, sessionID, trackID string) ([]byte, error) {
+	return s.subtitle(ctx, sessionID, "", trackID, true)
+}
+
+func (s *Service) subtitle(ctx context.Context, sessionID, token, trackID string, ownerVerified bool) ([]byte, error) {
+	var a MediaAccess
+	var e error
+	if ownerVerified {
+		a, e = s.mediaAuthorization(ctx, sessionID)
+	} else {
+		a, e = s.AuthorizeMedia(ctx, sessionID, token)
+	}
 	if e != nil {
 		return nil, e
 	}

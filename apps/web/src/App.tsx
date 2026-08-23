@@ -162,13 +162,19 @@ export function App() {
     <Home info={info} user={user} />
   );
   if (watch) return content;
+  const pageTitle = page.startsWith("admin/")
+    ? "Server administration"
+    : page === "settings/home"
+      ? "Home customization"
+      : page.split("/")[0].replace(/(^|-)\w/g, (value) => value.replace("-", " ").toUpperCase());
   return (
     <div className="app-shell">
       <aside>
         <div className="brand">
-          <div className="mark">V</div>VyNode
+          <div className="mark">V</div><span>VyNode</span><small>MEDIA</small>
         </div>
         <nav>
+          <p className="nav-section-label">Browse</p>
           <Nav go={go} page={page} target="home">
             Home
           </Nav>
@@ -183,9 +189,9 @@ export function App() {
           <Nav go={go} page={page} target="watchlist">Watchlist</Nav>
           <Nav go={go} page={page} target="favorites">Favorites</Nav>
           <Nav go={go} page={page} target="downloads">Downloads</Nav>
-          <Nav go={go} page={page} target="settings/home">Home settings</Nav>
           {admin && (
             <>
+              <p className="nav-section-label">Administration</p>
               <Nav go={go} page={page} target="admin/dashboard">Dashboard</Nav>
               <Nav go={go} page={page} target="admin/analytics">Analytics</Nav>
               <Nav go={go} page={page} target="admin/health">Health</Nav>
@@ -207,6 +213,8 @@ export function App() {
               </Nav>
             </>
           )}
+          <p className="nav-section-label">Settings</p>
+          <Nav go={go} page={page} target="settings/home">Home rows</Nav>
           <Nav go={go} page={page} target="account">
             Account
           </Nav>
@@ -223,7 +231,7 @@ export function App() {
               </Nav>
             </>
           )}
-          <button
+          <button className="nav-logout"
             onClick={() =>
               api.logout().finally(() => {
                 setUser(null);
@@ -237,10 +245,12 @@ export function App() {
       </aside>
       <main>
         <header>
-          <div>
-            <p className="eyebrow">{user.role}</p>
+          <button className="mobile-brand" onClick={()=>go("home")} aria-label="Go to Home"><span className="mark">V</span></button>
+          <div className="header-context">
+            <p className="eyebrow">{pageTitle}</p>
             <h1>{user.displayName}</h1>
           </div>
+          <button className="header-search" onClick={()=>go("movies")} aria-label="Browse media">Browse</button>
           <div className="connection online">
             <i />
             {info?.serverName}
@@ -265,6 +275,13 @@ export function App() {
           </label>
         )}
         {content}
+        <nav className="mobile-nav" aria-label="Primary navigation">
+          <Nav go={go} page={page} target="home">Home</Nav>
+          <Nav go={go} page={page} target="movies">Movies</Nav>
+          <Nav go={go} page={page} target="shows">Shows</Nav>
+          <Nav go={go} page={page} target="downloads">Downloads</Nav>
+          <Nav go={go} page={page} target="account">Account</Nav>
+        </nav>
       </main>
     </div>
   );
