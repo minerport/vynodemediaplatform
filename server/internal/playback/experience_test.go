@@ -115,4 +115,20 @@ func TestMarkerValidationAndCreditsCompletion(t *testing.T) {
 	if !p.Watched {
 		t.Fatal("credits did not complete")
 	}
+	if p.Position != 80 {
+		t.Fatalf("credits inference reset active position: %v", p.Position)
+	}
+	if _, e = s.AuthorizeMediaForOwner(ctx, x.ID); e != nil {
+		t.Fatalf("credits inference ended active playback: %v", e)
+	}
+	if e = s.Update(ctx, "u1", x.ID, Progress{State: Playing, Position: 40, Duration: 100}); e != nil {
+		t.Fatalf("seek after credits inference failed: %v", e)
+	}
+	if _, e = s.AuthorizeMediaForOwner(ctx, x.ID); e != nil {
+		t.Fatalf("media unavailable after seek from credits: %v", e)
+	}
+	var state string
+	if e = s.db.QueryRow("SELECT state FROM playback_sessions WHERE id=?", x.ID).Scan(&state); e != nil || state != string(Playing) {
+		t.Fatalf("credits inference state=%q err=%v", state, e)
+	}
 }

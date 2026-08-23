@@ -18,3 +18,9 @@ artifacts/
 .tmp-phase8-*/
 .tmp-phase9-*/
 .tmp-phase10-*/
+apps/android/.gradle/
+apps/android/local.properties
+apps/android/**/build/
+apps/android/.idea/
+*.jks
+*.keystore

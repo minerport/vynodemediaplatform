@@ -1,2 +1,16 @@
-:root{--surface-0:#0b0e0d;--surface-1:#111513;--surface-2:#1a201d;--border:#29312d;--text-1:#f3f6f1;--text-2:#aeb7b1;--text-3:#727d76;--accent:#8bf2b4;--accent-soft:#8bf2b412;--danger:#ff806b;--radius:14px;--font-sans:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;--font-mono:"SFMono-Regular",Consolas,"Liberation Mono",monospace;color-scheme:dark}
-
+:root {
+  color-scheme: dark;
+  --vynode-bg: #080d0f; --vynode-bg-subtle: #0d1416;
+  --vynode-surface: #121b1e; --vynode-surface-raised: #192428; --vynode-surface-overlay: #202d31;
+  --vynode-border: #2a383d; --vynode-border-strong: #3c4d53;
+  --vynode-text: #f4f7f7; --vynode-text-muted: #a8b5b9; --vynode-text-subtle: #74858b;
+  --vynode-accent: #63d7bd; --vynode-accent-strong: #8ce8d3; --vynode-accent-ink: #05251f;
+  --vynode-accent-soft: #63d7bd1c; --vynode-danger: #ff786c; --vynode-warning: #e9bd68; --vynode-focus: #a8f4e3;
+  --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem; --space-5: 1.25rem;
+  --space-6: 1.5rem; --space-8: 2rem; --space-10: 2.5rem; --space-12: 3rem; --space-16: 4rem;
+  --radius-sm: .5rem; --radius-md: .75rem; --radius-lg: 1.125rem; --radius-pill: 999px;
+  --shadow-raised: 0 .75rem 2.25rem #0005; --shadow-overlay: 0 1.5rem 4rem #0009;
+  --motion-fast: 120ms; --motion-standard: 220ms; --motion-slow: 360ms;
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
