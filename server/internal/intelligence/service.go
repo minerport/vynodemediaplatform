@@ -124,7 +124,7 @@ func (s *Service) run(id string, work func(context.Context, string) error) {
 	defer func() { <-s.slots }()
 	for {
 		var active int
-		_ = s.db.QueryRow("SELECT COUNT(*) FROM playback_sessions WHERE mode='VIDEO_TRANSCODE' AND state IN ('STARTING','PLAYING')").Scan(&active)
+		_ = s.db.QueryRow("SELECT (SELECT COUNT(*) FROM playback_sessions WHERE mode='VIDEO_TRANSCODE' AND state IN ('STARTING','PLAYING'))+(SELECT COUNT(*) FROM download_jobs WHERE state IN ('QUEUED','PREPARING'))").Scan(&active)
 		if active == 0 {
 			break
 		}

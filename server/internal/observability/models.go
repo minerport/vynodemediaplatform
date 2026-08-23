@@ -13,6 +13,9 @@ var EventCatalog = map[string]EventDefinition{
 	"LAN_DISCOVERY_FAILED":     {"LAN_DISCOVERY_FAILED", "NETWORK", "WARNING"},
 	"PORT_MAPPING_ESTABLISHED": {"PORT_MAPPING_ESTABLISHED", "NETWORK", "INFO"},
 	"PORT_MAPPING_FAILED":      {"PORT_MAPPING_FAILED", "NETWORK", "WARNING"},
+	"DOWNLOAD_READY":           {"DOWNLOAD_READY", "DOWNLOAD", "INFO"},
+	"DOWNLOAD_FAILED":          {"DOWNLOAD_FAILED", "DOWNLOAD", "WARNING"},
+	"DOWNLOAD_CACHE_LOW_SPACE": {"DOWNLOAD_CACHE_LOW_SPACE", "DOWNLOAD", "WARNING"},
 }
 
 type EventDefinition struct{ Type, Category, Severity string }
@@ -80,7 +83,7 @@ type Dashboard struct {
 	FailedJobs                                                                           int
 	RecentEvents                                                                         []Event
 }
-type Paths struct{ Config, Transcode, Optimized string }
+type Paths struct{ Config, Transcode, Optimized, Downloads string }
 type SystemInfo struct {
 	Version, Commit, ServerName, InstanceID, DatabaseType, OS, Architecture, FFmpeg, FFprobe string
 	StartedAt                                                                                time.Time

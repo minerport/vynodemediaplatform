@@ -14,6 +14,7 @@ import (
 	"github.com/vynode/media/server/internal/media"
 	"github.com/vynode/media/server/internal/metadata"
 	"github.com/vynode/media/server/internal/observability"
+	"github.com/vynode/media/server/internal/offline"
 	"github.com/vynode/media/server/internal/playback"
 	"github.com/vynode/media/server/internal/sharing"
 	"log/slog"
@@ -30,6 +31,7 @@ type Runtime struct {
 	intelligence  *intelligence.Service
 	observability *observability.Service
 	sharing       *sharing.Service
+	offline       *offline.Service
 }
 
 func Initialize(ctx context.Context, cfg config.Config, logger *slog.Logger) (*Runtime, error) {
@@ -65,7 +67,7 @@ func Initialize(ctx context.Context, cfg config.Config, logger *slog.Logger) (*R
 	playbackService.ConfigureVideo(playback.NewHLS(cfg.FFmpegPath, cfg.TranscodeDir, cfg.VideoTranscodes), cfg.RemoteBitrate)
 	intelligenceService := intelligence.New(store.DB, cfg.FFmpegPath, cfg.OptimizedDir)
 	curationService := curation.New(store.DB)
-	observabilityService, err := observability.New(store.DB, observability.SystemInfo{Version: info.Version, Commit: info.Commit, ServerName: info.ServerName, InstanceID: info.InstanceID, DatabaseType: info.DatabaseType, OS: info.OS, Architecture: info.Architecture, FFmpeg: cfg.FFmpegPath, FFprobe: cfg.FFprobePath, StartedAt: info.StartedAt}, observability.Paths{Config: cfg.ConfigDir, Transcode: cfg.TranscodeDir, Optimized: cfg.OptimizedDir}, cfg.ConfigDir)
+	observabilityService, err := observability.New(store.DB, observability.SystemInfo{Version: info.Version, Commit: info.Commit, ServerName: info.ServerName, InstanceID: info.InstanceID, DatabaseType: info.DatabaseType, OS: info.OS, Architecture: info.Architecture, FFmpeg: cfg.FFmpegPath, FFprobe: cfg.FFprobePath, StartedAt: info.StartedAt}, observability.Paths{Config: cfg.ConfigDir, Transcode: cfg.TranscodeDir, Optimized: cfg.OptimizedDir, Downloads: cfg.DownloadsDir}, cfg.ConfigDir)
 	if err != nil {
 		return fail(fmt.Errorf("initialize observability: %w", err))
 	}
@@ -79,10 +81,20 @@ func Initialize(ctx context.Context, cfg config.Config, logger *slog.Logger) (*R
 	if err := sharingService.StartRuntime(cfg.HTTPAddress); err != nil {
 		return fail(fmt.Errorf("initialize sharing network runtime: %w", err))
 	}
-	server := &http.Server{Addr: cfg.HTTPAddress, Handler: httpserver.NewHandler(logger, store, info, authService, mediaService, metadataService, playbackService, cfg.AllowedOrigin, intelligenceService, curationService, observabilityService, sharingService), ReadHeaderTimeout: cfg.ReadHeaderTimeout, IdleTimeout: cfg.IdleTimeout}
-	return &Runtime{Server: server, store: store, playback: playbackService, intelligence: intelligenceService, observability: observabilityService, sharing: sharingService}, nil
+	offlineService, err := offline.New(store.DB, cfg.DownloadsDir, cfg.FFmpegPath)
+	if err != nil {
+		return fail(fmt.Errorf("initialize offline downloads: %w", err))
+	}
+	offlineService.ConfigureEvents(func(ctx context.Context, kind string, payload map[string]any, dedupe string) {
+		_, _ = observabilityService.Emit(ctx, kind, payload, dedupe)
+	})
+	server := &http.Server{Addr: cfg.HTTPAddress, Handler: httpserver.NewHandler(logger, store, info, authService, mediaService, metadataService, playbackService, cfg.AllowedOrigin, intelligenceService, curationService, observabilityService, sharingService, offlineService), ReadHeaderTimeout: cfg.ReadHeaderTimeout, IdleTimeout: cfg.IdleTimeout}
+	return &Runtime{Server: server, store: store, playback: playbackService, intelligence: intelligenceService, observability: observabilityService, sharing: sharingService, offline: offlineService}, nil
 }
 func (r *Runtime) Shutdown(ctx context.Context) error {
+	if r.offline != nil {
+		r.offline.Close()
+	}
 	if r.sharing != nil {
 		r.sharing.Close()
 	}

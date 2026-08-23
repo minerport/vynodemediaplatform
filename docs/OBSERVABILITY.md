@@ -7,3 +7,6 @@ Current live metrics are uptime, OS/architecture, Go heap and reserved runtime m
 Playback analytics aggregate real playback sessions by delivery mode, completion/error state, logical type, user, and bounded time range. OWNER/ADMIN receive server-wide data; the account summary endpoint always derives the user from the authenticated principal. Operational events are separate from security audit and retained for 90 days; completed webhook deliveries are retained for 30 days. Cleanup never deletes security audit records.
 
 The Phase 10 live strategy is efficient polling. SSE/WebSocket delivery is deferred; high-frequency samples are not persisted in SQLite.
+# Offline downloads
+
+The Downloads disk is measured independently from original media. Download preparation appears in the unified job model, and durable `DOWNLOAD_READY`, `DOWNLOAD_FAILED`, and `DOWNLOAD_CACHE_LOW_SPACE` events avoid per-byte noise. Detectable unwritable, low-space, corrupt, and repeated preparation failures surface as health issues and resolve when the condition clears.

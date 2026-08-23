@@ -4,6 +4,8 @@ Playback preferences are scoped to the authenticated user. Marker reads require 
 
 Automatic analysis is offline and uses structured FFmpeg arguments; it never exposes source paths or uploads fingerprints. Automation accepts no SQL, scripts, arbitrary paths, moves, or original-media deletion. Optimized output is confined to a dedicated controlled root and finalized atomically. Manual marker decisions always outrank generated evidence.
 
+Offline downloads require an active paired session, matching user and device assignment, and an explicit current DOWNLOAD grant. IDs are not credentials. Generated paths use server IDs under an ownership-marked root; client filenames are sanitized for control characters, separators, Windows reserved names, and length. Original media stays read-only. Revocation denies future/resumed requests but cannot erase bytes already held by a disconnected device; VyNode does not claim DRM.
+
 HLS playlists and every fMP4 resource use the existing HttpOnly playback credential and session ownership checks. Generated URLs never contain source paths, traversal is rejected, and responses are private `no-store`.
 
 Generated playback uses structured FFmpeg arguments and never a shell. Clients may select stored track IDs and a bounded timestamp but cannot supply filters or flags. Diagnostics are bounded and redact paths; media and subtitle credentials are route-scoped, HttpOnly, SameSite, and bound to an active login session.

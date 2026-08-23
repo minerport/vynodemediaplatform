@@ -24,7 +24,9 @@ export type Session = {
   lastActivityAt: string;
   current: boolean;
 };
-export type LibraryGrant={libraryId:string;libraryName?:string;permissions:("VIEW"|"PLAY")[]};
+export type LibraryGrant={libraryId:string;libraryName?:string;permissions:("VIEW"|"PLAY"|"DOWNLOAD")[]};
+export type OfflineDownload={id:string;logicalType:string;logicalId:string;profileId:string;status:string;mode:string;assetState:string;sizeBytes:number;checksumSha256?:string;progress:number;createdAt:string};
+export type OfflineSettings={cacheQuotaBytes:number;cacheBytes:number;readyAssets:number;preparingAssets:number};
 export type Invitation={id:string;identifier?:string;role:"ADMIN"|"USER";status:string;createdBy:string;createdAt:string;expiresAt:string;acceptedAt?:string;libraries:LibraryGrant[]};
 export type PairingRequest={id:string;code?:string;challenge?:string;status:string;deviceName:string;clientName:string;clientVersion?:string;platform:string;platformVersion?:string;requestedAt:string;expiresAt:string};
 export type RemoteSettings={discoveryEnabled:boolean;discoveryStatus:string;discoveryLastError?:string;portMappingEnabled:boolean;portMappingProtocol?:string;portMappingStatus:string;portMappingExternalPort?:number;portMappingLeaseExpiresAt?:string;portMappingLastError?:string;reverseProxyEnabled:boolean;insecureRemoteAllowed:boolean;manualRemoteUrl?:string;manualStatus:string;trustedProxyCidrs:string[];localNetworkCidrs:string[];updatedAt:string};
@@ -664,6 +666,11 @@ export const api = {
   webhookDeliveries:()=>call<{deliveries:WebhookDelivery[]}>("/api/v1/admin/notifications/deliveries?limit=50"),
   adminStopPlayback: (id: string) =>
     call<void>(`/api/v1/admin/playback/sessions/${id}`, { method: "DELETE" }),
+  offlineDownloads:()=>call<{downloads:OfflineDownload[]}>("/api/v1/downloads"),
+  offlineSettings:()=>call<OfflineSettings>("/api/v1/admin/download-settings"),
+  saveOfflineSettings:(cacheQuotaBytes:number)=>call<OfflineSettings>("/api/v1/admin/download-settings",{method:"PUT",body:JSON.stringify({cacheQuotaBytes})}),
+  createOfflineDownload:(logicalType:"MOVIE"|"EPISODE",logicalId:string,profileId:string)=>call<OfflineDownload>("/api/v1/downloads",{method:"POST",body:JSON.stringify({logicalType,logicalId,profileId})}),
+  removeOfflineDownload:(id:string)=>call<void>(`/api/v1/downloads/${id}`,{method:"DELETE"}),
   logout: () =>
     call<void>("/api/v1/auth/logout", { method: "POST" }).finally(() => {
       accessToken = "";

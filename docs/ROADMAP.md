@@ -22,3 +22,5 @@ Every gate requires tests, builds, ADR updates, stated limitations, and no unrel
 refactors. Only the immediately authorized phase begins.
 
 Phase 11 introduces explicit household sharing, offline one-time invitations, secure native-device pairing, manual remote endpoints, trusted-proxy policy, runtime mDNS advertisement, and opt-in UPnP IGD lease management. NAT-PMP, PCP, built-in TLS, and externally verified reachability remain explicit future work rather than simulated capability.
+
+Phase 12 establishes the native offline contract: device-bound resumable downloads, immutable SHA-256 assets, MP4/H.264/AAC compatibility preparation, incremental cursors, conservative progress reconciliation, and next-N episode subscriptions. Native Android and Apple applications remain Phase 13+ work.

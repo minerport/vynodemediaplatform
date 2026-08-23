@@ -33,6 +33,7 @@ type Config struct {
 	VideoTranscodes   int
 	RemoteBitrate     int64
 	OptimizedDir      string
+	DownloadsDir      string
 }
 
 func Load() (Config, error) {
@@ -56,6 +57,7 @@ func Load() (Config, error) {
 		VideoTranscodes:   1,
 		RemoteBitrate:     20_000_000,
 		OptimizedDir:      envOr("VYNODE_OPTIMIZED_DIR", filepath.Join(envOr("VYNODE_CONFIG_DIR", "./data"), "optimized")),
+		DownloadsDir:      envOr("VYNODE_DOWNLOADS_DIR", filepath.Join(envOr("VYNODE_CONFIG_DIR", "./data"), "downloads")),
 	}
 	if strings.TrimSpace(cfg.ConfigDir) == "" {
 		return Config{}, fmt.Errorf("VYNODE_CONFIG_DIR must not be empty")
