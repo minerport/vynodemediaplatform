@@ -222,7 +222,13 @@ func (s *Service) ExchangeDeviceCode(ctx context.Context, deviceCode string) (st
 	if status == "PENDING" && s.Now().Before(exp) {
 		return "", d, ErrConflict
 	}
-	if status != "APPROVED" || !s.Now().Before(exp) {
+	if status == "DENIED" {
+		return "", d, ErrDeviceDenied
+	}
+	if status == "EXPIRED" || !s.Now().Before(exp) {
+		return "", d, ErrDeviceExpired
+	}
+	if status != "APPROVED" {
 		return "", d, ErrGone
 	}
 	r, err := tx.ExecContext(ctx, "UPDATE device_codes SET status='EXCHANGED' WHERE id=? AND status='APPROVED'", id)

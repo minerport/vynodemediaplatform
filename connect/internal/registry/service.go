@@ -21,10 +21,12 @@ import (
 )
 
 var (
-	ErrInvalid   = errors.New("invalid request")
-	ErrForbidden = errors.New("forbidden")
-	ErrGone      = errors.New("unavailable")
-	ErrConflict  = errors.New("conflict")
+	ErrInvalid       = errors.New("invalid request")
+	ErrForbidden     = errors.New("forbidden")
+	ErrGone          = errors.New("unavailable")
+	ErrDeviceDenied  = fmt.Errorf("device authorization denied: %w", ErrGone)
+	ErrDeviceExpired = fmt.Errorf("device authorization expired: %w", ErrGone)
+	ErrConflict      = errors.New("conflict")
 )
 
 type Service struct {

@@ -302,6 +302,10 @@ func respond(w http.ResponseWriter, v any, e error) {
 		problem(w, 401, "authentication_required")
 	case errors.Is(e, account.ErrConflict), errors.Is(e, registry.ErrConflict):
 		problem(w, 409, "conflict")
+	case errors.Is(e, registry.ErrDeviceDenied):
+		problem(w, 410, "device_denied")
+	case errors.Is(e, registry.ErrDeviceExpired):
+		problem(w, 410, "device_expired")
 	case errors.Is(e, registry.ErrGone):
 		problem(w, 410, "gone")
 	default:
