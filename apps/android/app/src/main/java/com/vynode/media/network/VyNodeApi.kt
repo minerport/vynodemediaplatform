@@ -26,9 +26,10 @@ data class ApiQuality(val id: String, val label: String)
 data class ApiNavigationItem(val id: String, val title: String)
 data class ApiProgress(val position: Double, val duration: Double, val watched: Boolean)
 data class PlaybackSession(val id: String, val mode: String, val mediaUrl: String?, val hlsUrl: String?, val subtitleUrl: String?, val resumePosition: Double,
-    val audioTracks: List<ApiTrack>, val subtitleTracks: List<ApiTrack>, val markers: List<ApiMarker>, val qualities: List<ApiQuality>, val next: ApiNavigationItem?)
-data class ApiEpisode(val id: String, val title: String, val season: Int, val number: Int, val available: Boolean, val progress: ApiProgress? = null)
-data class ApiShow(val id: String, val title: String, val episodes: List<ApiEpisode>)
+    val audioTracks: List<ApiTrack>, val subtitleTracks: List<ApiTrack>, val markers: List<ApiMarker>, val qualities: List<ApiQuality>, val next: ApiNavigationItem?,
+    val selectedAudioId:String?=null,val selectedSubtitleId:String?=null,val selectedQualityId:String?=null)
+data class ApiEpisode(val id: String, val title: String, val season: Int, val number: Int, val available: Boolean, val progress: ApiProgress? = null, val overview:String="",val runtimeMinutes:Int=0)
+data class ApiShow(val id: String, val title: String, val episodes: List<ApiEpisode>,val year:Int=0,val overview:String="",val rating:Double=0.0,val genres:List<String> = emptyList())
 data class ApiMovie(val id: String, val title: String, val overview: String, val year: Int, val runtimeMinutes: Int, val artworkId: String?)
 data class ApiSearch(val movies: List<ApiMovie>, val shows: List<ApiShow>)
 data class ApiDownload(val id: String, val logicalId: String, val assetId: String, val status: String, val size: Long, val checksum: String)
@@ -78,7 +79,10 @@ class VyNodeApi(endpoint: String, private val client: OkHttpClient = OkHttpClien
                 version.optJSONArray("audioTracks").orEmpty().mapObjects(::track), version.optJSONArray("subtitleTracks").orEmpty().mapObjects(::track),
                 it.optJSONArray("markers").orEmpty().mapObjects { x -> ApiMarker(x.getString("type"),x.getDouble("start"),x.getDouble("end")) },
                 it.optJSONArray("availableQualities").orEmpty().mapObjects { x -> ApiQuality(x.getString("id"),x.getString("label")) },
-                it.optJSONObject("navigation")?.optJSONObject("next")?.let { x -> ApiNavigationItem(x.getString("logicalId"),x.getString("title")) })
+                it.optJSONObject("navigation")?.optJSONObject("next")?.let { x -> ApiNavigationItem(x.getString("logicalId"),x.getString("title")) },
+                it.optJSONObject("selectedAudioTrack")?.optString("id")?.takeIf(String::isNotBlank),
+                it.optJSONObject("selectedSubtitleTrack")?.optString("id")?.takeIf(String::isNotBlank),
+                it.optJSONObject("decision")?.optJSONObject("plan")?.optString("quality")?.takeIf(String::isNotBlank))
         }
 
     suspend fun movie(id: String): ApiMovie = getJson("/api/v1/movies/$id", authenticated=true).movie()
@@ -93,8 +97,8 @@ class VyNodeApi(endpoint: String, private val client: OkHttpClient = OkHttpClien
     suspend fun show(id: String): ApiShow = getJson("/api/v1/shows/$id", authenticated = true).let { show ->
         val result=ApiShow(show.getString("id"), show.getString("title"), show.optJSONArray("seasons").orEmpty().mapObjects { season ->
             val seasonNumber = season.optInt("seasonNumber")
-            season.optJSONArray("episodes").orEmpty().mapObjects { episode -> ApiEpisode(episode.getString("id"), episode.getString("title"), seasonNumber, episode.getInt("episodeNumber"), episode.optBoolean("available")) }
-        }.flatten())
+            season.optJSONArray("episodes").orEmpty().mapObjects { episode -> ApiEpisode(episode.getString("id"), episode.getString("title"), seasonNumber, episode.getInt("episodeNumber"), episode.optBoolean("available"),overview=episode.optString("overview"),runtimeMinutes=episode.optInt("runtimeMinutes")) }
+        }.flatten(),show.optInt("year"),show.optString("overview"),show.optDouble("rating"),show.optJSONArray("genres").orEmpty().mapStrings())
         result.copy(episodes=result.episodes.map { episode -> episode.copy(progress=runCatching { progress("EPISODE",episode.id) }.getOrNull()) })
     }
 
@@ -164,5 +168,6 @@ class VyNodeApi(endpoint: String, private val client: OkHttpClient = OkHttpClien
     private fun JSONObject.optNullable(primary: String, fallback: String) = optString(primary, optString(fallback)).takeIf { it.isNotBlank() }
     private fun JSONArray?.orEmpty() = this ?: JSONArray()
     private fun <T> JSONArray.mapObjects(transform: (JSONObject) -> T) = (0 until length()).map { transform(getJSONObject(it)) }
+    private fun JSONArray.mapStrings() = (0 until length()).map { optString(it) }.filter(String::isNotBlank)
     private companion object { val JSON = "application/json; charset=utf-8".toMediaType() }
 }

@@ -27,7 +27,8 @@ import com.vynode.media.data.GlobalAccountEntity
 
 sealed interface AppScreen {
     data object GlobalSignIn : AppScreen
-    data class ServerPicker(val servers:List<ConnectedServer>,val message:String?=null):AppScreen
+    data class ServerPicker(val servers:List<ConnectedServer>,val message:String?=null,val currentServerId:String?=null):AppScreen
+    data class ServerInfo(val serverName:String):AppScreen
 	data class GlobalDeviceCode(val userCode:String,val verificationPath:String):AppScreen
     data object Connect : AppScreen
     data class ConfirmInsecure(val endpoint: String) : AppScreen
@@ -35,9 +36,11 @@ sealed interface AppScreen {
     data class Home(val server: ServerIdentity, val rows: List<ApiHomeRow>, val focusId: String? = null) : AppScreen
     data class Movie(val server: ServerIdentity, val movie: ApiMovie, val progress: ApiProgress?) : AppScreen
     data class Playing(val server: ServerIdentity, val item: ApiHomeItem, val session: PlaybackSession) : AppScreen
-    data class Show(val server: ServerIdentity, val show: ApiShow, val message: String? = null) : AppScreen
+    data class Show(val server: ServerIdentity, val show: ApiShow, val message: String? = null, val focusId:String?=null) : AppScreen
     data class Search(val query: String = "", val results: ApiSearch? = null) : AppScreen
+    data class Library(val kind: String, val results: ApiSearch) : AppScreen
     data class Offline(val downloads: List<DownloadEntity>) : AppScreen
+    data class Account(val accountName: String, val serverName: String) : AppScreen
     data class LocalPlaying(val download: DownloadEntity) : AppScreen
     data class Error(val message: String) : AppScreen
     data class IdentityMismatch(val expected: String, val received: ServerIdentity) : AppScreen
@@ -72,9 +75,9 @@ class AppController(context: Context, private val tv: Boolean) {
 	fun advancedConnect(){mutable.value=AppScreen.Connect}
 	fun globalLogin(username:String,password:String){scope.launch{runCatching{connectApi.login(username,password,android.os.Build.MODEL)}.onSuccess{session->acceptGlobalSession(session);loadGlobalServers(session.account.id)}.onFailure{mutable.value=AppScreen.Error(it.message?:"VyNode sign-in failed")}}}
 	fun globalRegister(username:String,displayName:String,password:String){scope.launch{runCatching{connectApi.register(username,displayName,password,android.os.Build.MODEL)}.onSuccess{session->acceptGlobalSession(session);loadGlobalServers(session.account.id)}.onFailure{mutable.value=AppScreen.Error(it.message?:"VyNode account creation failed")}}}
-	fun beginTvGlobalSignIn(){scope.launch{runCatching{connectApi.deviceCode(android.os.Build.MODEL)}.onSuccess{code->mutable.value=AppScreen.GlobalDeviceCode(code.userCode,code.verificationPath);while(currentCoroutineContext().isActive){delay(code.pollAfterSeconds*1000L);try{val session=connectApi.exchangeDeviceCode(code.deviceCode);acceptGlobalSession(session);loadGlobalServers(session.account.id);return@launch}catch(e:ConnectException){if(e.status==410){mutable.value=AppScreen.Error("Device authorization expired or was denied");return@launch};if(e.status!=409)throw e}}}.onFailure{mutable.value=AppScreen.Error(it.message?:"Device authorization failed")}}}
+	fun beginTvGlobalSignIn(){scope.launch{runCatching{connectApi.deviceCode(android.os.Build.MODEL)}.onSuccess{code->mutable.value=AppScreen.GlobalDeviceCode(code.userCode,code.verificationPath);while(currentCoroutineContext().isActive){delay(code.pollAfterSeconds*1000L);try{val session=connectApi.exchangeDeviceCode(code.deviceCode);acceptGlobalSession(session);loadGlobalServers(session.account.id);return@launch}catch(e:ConnectException){if(e.status==410){mutable.value=AppScreen.Error(when(e.code){"device_denied"->"Device authorization was denied";"device_expired"->"Device authorization expired";else->"Device authorization is no longer available"});return@launch};if(e.status!=409)throw e}}}.onFailure{mutable.value=AppScreen.Error(it.message?:"Device authorization failed")}}}
 	fun selectGlobalServer(server:ConnectedServer){scope.launch{runCatching{connectToGlobalServer(server,database.dao().activeGlobalAccount()?.accountId)}.onFailure{mutable.value=AppScreen.Error(it.message?:"Server unavailable")}}}
-	fun chooseGlobalServer(){scope.launch{runCatching{val account=database.dao().activeGlobalAccount()?:error("Global account is not available");val values=withGlobalAccess{connectApi.servers(it)};mutable.value=AppScreen.ServerPicker(values,if(values.isEmpty())"No VyNode servers are linked to your account yet." else null)}.onFailure{mutable.value=AppScreen.Error(it.message?:"VyNode Connect is unavailable")}}}
+	fun chooseGlobalServer(){scope.launch{val account=database.dao().activeGlobalAccount();if(account==null){currentServer?.let{mutable.value=AppScreen.ServerInfo(it.serverName)}?:run{mutable.value=AppScreen.Error("No server is connected")};return@launch};runCatching{val values=withGlobalAccess{connectApi.servers(it)};mutable.value=AppScreen.ServerPicker(values,if(values.isEmpty())"No VyNode servers are linked to your account yet." else null,currentServer?.instanceId)}.onFailure{mutable.value=AppScreen.Error(it.message?:"VyNode Connect is unavailable")}}}
 	fun globalLogout(){scope.launch{val account=database.dao().activeGlobalAccount();account?.let{database.dao().serversForGlobalAccount(it.accountId).forEach{server->clearGlobalServerState(server.serverId)}};globalSession.revoke();coordinator?.revoke();coordinator=null;api=null;currentServer=null;database.dao().deactivateGlobalAccounts();mutable.value=AppScreen.GlobalSignIn}}
 	private suspend fun clearGlobalServerState(serverId:String){
 		database.dao().downloadsForServer(serverId).forEach{download->
@@ -156,7 +159,7 @@ class AppController(context: Context, private val tv: Boolean) {
 
     fun open(item: ApiHomeItem) {
         homeFocusId=item.id
-        detailOrigin = (mutable.value as? AppScreen.Search)
+        detailOrigin = mutable.value.takeIf { it is AppScreen.Search || it is AppScreen.Library }
         if (item.type.equals("SHOW", true)) {
             scope.launch { runCatching { api!!.show(item.id) }.onSuccess { mutable.value = AppScreen.Show(currentServer!!, it) }
                 .onFailure { mutable.value = AppScreen.Error(it.message ?: "Show could not be loaded") } }
@@ -167,6 +170,9 @@ class AppController(context: Context, private val tv: Boolean) {
     }
 
     fun openSearch() { mutable.value=AppScreen.Search() }
+    fun openLibrary(kind:String) { scope.launch { runCatching { api!!.search("") }.onSuccess { mutable.value=AppScreen.Library(kind.uppercase(),it) }.onFailure { mutable.value=AppScreen.Error(it.message ?: "Library could not be loaded") } } }
+    fun openDownloads() { scope.launch { val server=currentServer ?: return@launch; mutable.value=AppScreen.Offline(database.dao().readyDownloads(server.instanceId)) } }
+    fun openAccount() { scope.launch { val account=database.dao().activeGlobalAccount(); mutable.value=AppScreen.Account(account?.displayName ?: account?.username ?: "Local account",currentServer?.serverName ?: "No server") } }
     fun startOver(item: ApiHomeItem) {
         scope.launch {
             runCatching { api!!.startOver(item.type, item.id) }
@@ -174,6 +180,7 @@ class AppController(context: Context, private val tv: Boolean) {
                 .onFailure { mutable.value = AppScreen.Error(it.message ?: "Playback could not restart") }
         }
     }
+    fun playFromShow(item:ApiHomeItem){val current=mutable.value as? AppScreen.Show;if(current!=null)mutable.value=current.copy(focusId=item.id);play(item)}
     fun search(query:String) { scope.launch { runCatching { api!!.search(query) }.onSuccess { mutable.value=AppScreen.Search(query,it) }.onFailure { mutable.value=AppScreen.Error(it.message ?: "Search failed") } } }
 
     fun download(episode: ApiEpisode) {
