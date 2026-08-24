@@ -8,7 +8,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with: { go-version: '1.24.x', cache: true }
-      - run: test -z "$(gofmt -l server)"
+      - run: test -z "$(gofmt -l server connect)"
       - run: go test ./...
       - run: go build ./server/cmd/vynode-server
       - run: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/vynode-server.exe ./server/cmd/vynode-server
@@ -30,6 +30,8 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         with: { context: ., file: deploy/docker/Dockerfile, push: false }
+      - uses: docker/build-push-action@v6
+        with: { context: ., file: connect/Dockerfile, push: false }
   android:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: apps/android } }

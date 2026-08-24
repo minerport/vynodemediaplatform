@@ -18,6 +18,7 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+		buildConfigField("String","CONNECT_BASE_URL","\"${providers.gradleProperty("vynodeConnectUrl").orElse("https://connect.vynode.media").get()}\"")
     }
     buildFeatures { compose = true; buildConfig = true }
     buildTypes {

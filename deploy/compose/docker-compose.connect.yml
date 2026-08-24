@@ -1,0 +1,20 @@
+services:
+  connect:
+    build:
+      context: ../..
+      dockerfile: connect/Dockerfile
+      secrets:
+        - custom_ca
+    environment:
+      VYNODE_CONNECT_ISSUER: http://localhost:8090
+    ports:
+      - "8090:8090"
+    volumes:
+      - connect-data:/data
+
+volumes:
+  connect-data:
+
+secrets:
+  custom_ca:
+    file: ../../.codex-ca.pem

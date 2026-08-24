@@ -6,6 +6,7 @@ import (
 	"github.com/vynode/media/server/internal/auth"
 	"github.com/vynode/media/server/internal/buildinfo"
 	"github.com/vynode/media/server/internal/config"
+	connectservice "github.com/vynode/media/server/internal/connect"
 	"github.com/vynode/media/server/internal/curation"
 	"github.com/vynode/media/server/internal/database"
 	httpserver "github.com/vynode/media/server/internal/http"
@@ -32,6 +33,7 @@ type Runtime struct {
 	observability *observability.Service
 	sharing       *sharing.Service
 	offline       *offline.Service
+	connectCancel context.CancelFunc
 }
 
 func Initialize(ctx context.Context, cfg config.Config, logger *slog.Logger) (*Runtime, error) {
@@ -54,6 +56,12 @@ func Initialize(ctx context.Context, cfg config.Config, logger *slog.Logger) (*R
 	if err != nil {
 		return fail(fmt.Errorf("initialize authentication: %w", err))
 	}
+	connectIdentity, err := connectservice.LoadOrCreateIdentity(ctx, store.DB, cfg.ConfigDir, instanceID)
+	if err != nil {
+		return fail(fmt.Errorf("initialize Connect server identity: %w", err))
+	}
+	connectService := connectservice.New(store.DB, authService, instanceID)
+	connectService.ConfigureIdentity(connectIdentity)
 	probe := media.NewFFprobe(cfg.FFprobePath, cfg.ProbeConcurrency)
 	mediaService := media.New(store.DB, probe, cfg.ConfigDir, os.Getenv("VYNODE_TRANSCODE_DIR"))
 	providerBase := os.Getenv("VYNODE_TMDB_BASE_URL")
@@ -88,10 +96,14 @@ func Initialize(ctx context.Context, cfg config.Config, logger *slog.Logger) (*R
 	offlineService.ConfigureEvents(func(ctx context.Context, kind string, payload map[string]any, dedupe string) {
 		_, _ = observabilityService.Emit(ctx, kind, payload, dedupe)
 	})
-	server := &http.Server{Addr: cfg.HTTPAddress, Handler: httpserver.NewHandler(logger, store, info, authService, mediaService, metadataService, playbackService, cfg.AllowedOrigin, intelligenceService, curationService, observabilityService, sharingService, offlineService), ReadHeaderTimeout: cfg.ReadHeaderTimeout, IdleTimeout: cfg.IdleTimeout}
-	return &Runtime{Server: server, store: store, playback: playbackService, intelligence: intelligenceService, observability: observabilityService, sharing: sharingService, offline: offlineService}, nil
+	server := &http.Server{Addr: cfg.HTTPAddress, Handler: httpserver.NewHandler(logger, store, info, authService, mediaService, metadataService, playbackService, cfg.AllowedOrigin, intelligenceService, curationService, observabilityService, sharingService, offlineService, connectService), ReadHeaderTimeout: cfg.ReadHeaderTimeout, IdleTimeout: cfg.IdleTimeout}
+	connectCancel := connectService.StartHeartbeat(context.Background(), buildinfo.Version)
+	return &Runtime{Server: server, store: store, playback: playbackService, intelligence: intelligenceService, observability: observabilityService, sharing: sharingService, offline: offlineService, connectCancel: connectCancel}, nil
 }
 func (r *Runtime) Shutdown(ctx context.Context) error {
+	if r.connectCancel != nil {
+		r.connectCancel()
+	}
 	if r.offline != nil {
 		r.offline.Close()
 	}

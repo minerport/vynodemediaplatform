@@ -40,3 +40,5 @@ and [docs/limitations.md](docs/limitations.md) for scope and decisions.
 Docker and platform instructions live under `deploy/`. The canonical architecture,
 roadmap, and support truth are in `docs/ARCHITECTURE.md`, `docs/ROADMAP.md`, and
 `docs/PLATFORM_SUPPORT.md`.
+
+Optional global identity and zero-address discovery are provided by the separate VyNode Connect service. See [docs/phase-14-connect.md](docs/phase-14-connect.md) and run `docker compose -f deploy/compose/docker-compose.connect.yml up --build` for local development. The standard media-server deployment remains fully local and does not require Connect.

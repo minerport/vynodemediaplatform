@@ -7,7 +7,7 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
-    "openapi:lint": "redocly lint packages/api-schema/openapi.yaml",
+    "openapi:lint": "redocly lint packages/api-schema/openapi.yaml connect/openapi.yaml",
     "test": "npm run test --workspaces --if-present"
   },
   "devDependencies": {

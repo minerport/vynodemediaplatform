@@ -40,6 +40,29 @@ paths:
     delete: { operationId: revokeSession, security: [{ bearerAuth: [] }], parameters: [{ name: sessionId, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: Session revoked } } }
   /api/v1/account/password:
     post: { operationId: changePassword, security: [{ bearerAuth: [] }], responses: { '204': { description: Password changed and other sessions revoked } } }
+  /api/v1/connect/settings:
+    get: { operationId: getConnectSettings, summary: Requires users.manage, security: [{ bearerAuth: [] }], responses: { '200': { description: Connect configuration without private keys } } }
+    put: { operationId: configureConnect, summary: Requires users.manage, security: [{ bearerAuth: [] }], responses: { '204': { description: Connect configuration updated } } }
+  /api/v1/connect/server/claim:
+    post: { operationId: beginConnectServerClaim, summary: Requires users.manage; server identity signs the registration and claim, security: [{ bearerAuth: [] }], responses: { '200': { description: Global claim challenge } } }
+  /api/v1/connect/server:
+    delete: { operationId: unlinkConnectServer, summary: Requires users.manage; local operation remains available, security: [{ bearerAuth: [] }], responses: { '204': { description: Server unlinked } } }
+  /api/v1/connect/server/endpoint:
+    put: { operationId: publishConnectEndpoint, summary: Requires users.manage; publishes a server-signed endpoint, security: [{ bearerAuth: [] }], responses: { '204': { description: Endpoint published } } }
+  /api/v1/connect/link/request:
+    post: { operationId: createConnectLinkRequest, security: [{ bearerAuth: [] }], responses: { '201': { description: State-bound local account-link request } } }
+  /api/v1/connect/link/complete:
+    post: { operationId: completeConnectLink, security: [{ bearerAuth: [] }], responses: { '200': { description: Explicit global account link completed }, '409': { description: "Invalid, expired, or replayed grant" } } }
+  /api/v1/connect/link:
+    delete: { operationId: unlinkGlobalAccount, security: [{ bearerAuth: [] }], responses: { '204': { description: Global account link revoked; local account retained } } }
+  /api/v1/connect/exchange:
+    post: { operationId: exchangeConnectAssertion, summary: Exchanges one short-lived audience-bound assertion for a server-local session, responses: { '200': { description: Server-local session }, '401': { description: Invalid or replayed assertion }, '403': { description: Global account is not locally linked } } }
+  /api/v1/connect/invitations:
+    post: { operationId: createConnectInvitation, summary: Requires users.manage; role and grants remain server-authoritative, security: [{ bearerAuth: [] }], responses: { '201': { description: Server-signed bearer invitation } } }
+  /api/v1/connect/invitations/redeem:
+    post: { operationId: redeemConnectInvitation, summary: Transactionally provisions a GLOBAL_LINKED principal and server-owned grants, responses: { '200': { description: Provisioned }, '409': { description: "Invalid, stale, expired, revoked, or replayed redemption" } } }
+  /api/v1/connect/invitations/{id}:
+    delete: { operationId: revokeConnectInvitation, summary: Requires users.manage, security: [{ bearerAuth: [] }], parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }], responses: { '204': { description: Invitation revoked } } }
   /api/v1/admin/users:
     get: { operationId: listUsers, summary: Requires users.manage, security: [{ bearerAuth: [] }], responses: { '200': { description: Safe user list } } }
     post: { operationId: createUser, summary: Requires users.manage; ADMIN or USER only, security: [{ bearerAuth: [] }], responses: { '201': { description: Account created } } }

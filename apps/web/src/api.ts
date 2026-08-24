@@ -159,6 +159,7 @@ export type Show = {
   genres: string[];
   seasons?: Season[];
 };
+export type LocalSearch = { movies: Movie[]; shows: Show[] };
 export type ProviderStatus = {
   enabled: boolean;
   configured: boolean;
@@ -419,6 +420,23 @@ async function blob(path: string): Promise<Blob> {
 }
 export const api = {
   status: () => raw<{ setupRequired: boolean }>("/api/v1/setup/status"),
+  connectExchange: (assertion: string) =>
+    raw<{ accessToken: string; user: User }>("/api/v1/connect/exchange", {
+      method: "POST",
+      body: JSON.stringify({
+        assertion,
+        device: {
+          name: "Web browser",
+          clientName: "VyNode Web",
+          platform: navigator.platform || "web",
+        },
+      }),
+    }).then(accept),
+  redeemConnectInvitation: (redemption: string) =>
+    raw<{ provisioned: boolean }>("/api/v1/connect/invitations/redeem", {
+      method: "POST",
+      body: JSON.stringify({ redemption }),
+    }),
   setup: (body: unknown) =>
     raw<{ accessToken: string; user: User }>("/api/v1/setup/owner", {
       method: "POST",
@@ -515,6 +533,10 @@ export const api = {
     ),
   mediaFile: (id: string) => call<MediaFile>(`/api/v1/media/files/${id}`),
   movies: () => call<{ movies: Movie[] }>("/api/v1/movies"),
+  search: (query: string) =>
+    call<{ movies: Movie[] | null; shows: Show[] | null }>(
+      `/api/v1/search?q=${encodeURIComponent(query)}`,
+    ).then((result) => ({ movies: result.movies ?? [], shows: result.shows ?? [] })),
   movie: (id: string) => call<Movie>(`/api/v1/movies/${id}`),
   shows: () => call<{ shows: Show[] }>("/api/v1/shows"),
   show: (id: string) => call<Show>(`/api/v1/shows/${id}`),

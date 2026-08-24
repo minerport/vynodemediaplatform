@@ -48,7 +48,18 @@ export function App() {
           return;
         }
         try {
-          const u = await api.refresh();
+          const assertion = new URLSearchParams(location.hash.slice(1)).get(
+            "connect_assertion",
+          );
+          const redemption = new URLSearchParams(location.hash.slice(1)).get(
+            "connect_invitation_redemption",
+          );
+          if (assertion || redemption)
+            history.replaceState({}, "", location.pathname);
+          if (redemption) await api.redeemConnectInvitation(redemption);
+          const u = assertion
+            ? await api.connectExchange(assertion)
+            : await api.refresh();
           setUser(u);
           setInfo(await api.info());
           if (requested() === "setup" || requested() === "login") go("home");
@@ -99,7 +110,7 @@ export function App() {
     !admin
   ) {
     history.replaceState({}, "", "/home");
-    return <Home info={info} user={user} />;
+    return <Home info={info} user={user} go={go} />;
   }
   const watch = page.match(/^watch\/(movie|episode)\/([^/]+)$/);
   const content = watch ? (
@@ -114,6 +125,8 @@ export function App() {
     <Sessions />
   ) : page === "downloads" ? (
     <DownloadsPage />
+  ) : page === "search" ? (
+    <SearchPage go={go} />
   ) : page === "libraries" ? (
     <Libraries />
   ) : page === "users" ? (
@@ -159,7 +172,7 @@ export function App() {
   ) : page === "settings/home" ? (
     <HomeSettings />
   ) : (
-    <Home info={info} user={user} />
+    <Home info={info} user={user} go={go} />
   );
   if (watch) return content;
   const pageTitle = page.startsWith("admin/")
@@ -167,6 +180,8 @@ export function App() {
     : page === "settings/home"
       ? "Home customization"
       : page.split("/")[0].replace(/(^|-)\w/g, (value) => value.replace("-", " ").toUpperCase());
+  const settingsPage = page === "account" || page === "security/sessions" || page === "settings/home";
+  const adminPage = page.startsWith("admin/") || ["streams", "users", "audit", "libraries", "metadata", "automation"].includes(page);
   return (
     <div className="app-shell">
       <aside>
@@ -178,6 +193,9 @@ export function App() {
           <Nav go={go} page={page} target="home">
             Home
           </Nav>
+          <Nav go={go} page={page} target="search">
+            Search
+          </Nav>
           <Nav go={go} page={page} target="movies">
             Movies
           </Nav>
@@ -185,12 +203,14 @@ export function App() {
             Shows
           </Nav>
           <Nav go={go} page={page} target="collections">Collections</Nav>
-          <Nav go={go} page={page} target="playlists">Playlists</Nav>
+          <Nav go={go} page={page} target="downloads">Downloads</Nav>
+          <p className="nav-section-label">Saved</p>
           <Nav go={go} page={page} target="watchlist">Watchlist</Nav>
           <Nav go={go} page={page} target="favorites">Favorites</Nav>
-          <Nav go={go} page={page} target="downloads">Downloads</Nav>
+          <Nav go={go} page={page} target="playlists">Playlists</Nav>
           {admin && (
-            <>
+            <details className="admin-nav">
+              <summary>Administration</summary>
               <p className="nav-section-label">Administration</p>
               <Nav go={go} page={page} target="admin/dashboard">Dashboard</Nav>
               <Nav go={go} page={page} target="admin/analytics">Analytics</Nav>
@@ -211,7 +231,7 @@ export function App() {
               <Nav go={go} page={page} target="automation">
                 Automation
               </Nav>
-            </>
+            </details>
           )}
           <p className="nav-section-label">Settings</p>
           <Nav go={go} page={page} target="settings/home">Home rows</Nav>
@@ -243,20 +263,20 @@ export function App() {
           </button>
         </nav>
       </aside>
-      <main>
+      <main className={settingsPage ? "settings-shell" : adminPage ? "admin-shell" : undefined}>
         <header>
           <button className="mobile-brand" onClick={()=>go("home")} aria-label="Go to Home"><span className="mark">V</span></button>
           <div className="header-context">
             <p className="eyebrow">{pageTitle}</p>
             <h1>{user.displayName}</h1>
           </div>
-          <button className="header-search" onClick={()=>go("movies")} aria-label="Browse media">Browse</button>
+          <button className="header-search" onClick={()=>go("search")} aria-label="Search your media"><span className="search-glyph" aria-hidden="true"/>Search your media</button>
           <div className="connection online">
             <i />
             {info?.serverName}
           </div>
         </header>
-        {admin && (
+        {admin && (page.startsWith("admin/") || page === "streams") && (
           <label className="mobile-admin-select">
             Admin view
             <select
@@ -279,8 +299,8 @@ export function App() {
           <Nav go={go} page={page} target="home">Home</Nav>
           <Nav go={go} page={page} target="movies">Movies</Nav>
           <Nav go={go} page={page} target="shows">Shows</Nav>
-          <Nav go={go} page={page} target="downloads">Downloads</Nav>
-          <Nav go={go} page={page} target="account">Account</Nav>
+          <Nav go={go} page={page} target="search">Search</Nav>
+          <Nav go={go} page={page} target="account">You</Nav>
         </nav>
       </main>
     </div>
@@ -306,16 +326,30 @@ function Nav({
     </button>
   );
 }
-function Home({ info, user }: { info: SystemInfo | null; user: User }) {
+function Home({ info, user, go }: { info: SystemInfo | null; user: User; go: (p: Page) => void }) {
   const [rows,setRows]=useState<import("./api").HomeRow[]>([]);
   useEffect(()=>{api.home().then(x=>setRows(x.rows??[]))},[]);
+  const allItems = rows.flatMap(row => row.Items);
+  const feature = allItems.find(item => item.Position > 0) ?? allItems[0];
+  const featureKind = feature?.Type === "SHOW" ? "shows" : "movies";
+  const featureDetail = feature?.Type === "SHOW" ? `shows/${feature.ID}` : feature?.Type === "MOVIE" ? `movies/${feature.ID}` : "";
+  const featurePlay = feature?.Type === "MOVIE" ? `watch/movie/${feature.ID}` : feature?.Type === "EPISODE" ? `watch/episode/${feature.ID}` : featureDetail;
   return (
     <section className="content">
-      <div className="hero">
-        <p className="eyebrow">YOUR MEDIA</p>
-        <h2>{info?.serverName}</h2>
-        <p>Welcome back, {user.displayName}.</p>
-      </div>
+      {feature ? <section className="feature-hero">
+        {feature.Type !== "EPISODE" && <ArtworkImage kind={featureKind} id={feature.ID} type="BACKDROP" title={feature.Title} className="feature-backdrop" />}
+        <div className="feature-scrim" />
+        <div className="feature-copy">
+          <p className="eyebrow">{feature.Position > 0 ? "CONTINUE WATCHING" : "FROM YOUR LIBRARY"}</p>
+          <h2 title={feature.Title}>{feature.Title}</h2>
+          <p className="feature-meta">{[feature.Year, feature.Rating > 0 && `Rated ${feature.Rating.toFixed(1)}`, feature.Subtitle].filter(Boolean).join(" · ")}</p>
+          <div className="media-actions">
+            <button className="primary-action" onClick={() => go(featurePlay)}>{feature.Position > 0 ? "Resume" : feature.Type === "SHOW" ? "View show" : "Play"}</button>
+            {featureDetail && featureDetail !== featurePlay && <button className="secondary-action" onClick={() => go(featureDetail)}>Details</button>}
+          </div>
+        </div>
+        <span className="sr-only">Connected to {info?.serverName}. Welcome back, {user.displayName}.</span>
+      </section> : <div className="hero compact-hero"><p className="eyebrow">WELCOME BACK</p><h2>{user.displayName}</h2></div>}
       {!rows.length && (
         <div className="empty">
           <div className="empty-icon">V</div>
@@ -432,7 +466,7 @@ function Form({
           name="username"
           autoComplete="username"
           required
-          pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,63}"
+          pattern={"[A-Za-z0-9][A-Za-z0-9._\\-]{2,63}"}
         />
       </label>
       <label>
@@ -495,8 +529,8 @@ function Account({ user, info }: { user: User; info: SystemInfo | null }) {
     }
   }
   return (
-    <section className="panel">
-      <h2>Account</h2>
+    <section className="panel settings-page">
+      <div className="settings-heading"><p className="eyebrow">VYNODE ACCOUNT</p><h2>{user.displayName}</h2><p>Your global identity and preferences for this VyNode server.</p></div>
       <dl className="vertical">
         <div>
           <dt>Display name</dt>
@@ -507,7 +541,7 @@ function Account({ user, info }: { user: User; info: SystemInfo | null }) {
           <dd>@{user.username}</dd>
         </div>
         <div>
-          <dt>Role</dt>
+          <dt>Server role</dt>
           <dd>{user.role}</dd>
         </div>
         <div>
@@ -515,7 +549,7 @@ function Account({ user, info }: { user: User; info: SystemInfo | null }) {
           <dd>{new Date(user.createdAt).toLocaleString()}</dd>
         </div>
         <div>
-          <dt>Server</dt>
+          <dt>Current server</dt>
           <dd>{info?.serverName}</dd>
         </div>
       </dl>
@@ -565,7 +599,7 @@ function InviteAccept({token,done}:{token:string;done:(u:User)=>void}){
   const [invite,setInvite]=useState<{serverName:string;invitation:import("./api").Invitation}|null>(null),[error,setError]=useState("");
   useEffect(()=>{api.inspectInvitation(token).then(setInvite).catch(e=>setError(e.message))},[token]);
   async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=e.currentTarget,d=new FormData(f);setError("");try{const u=await api.acceptInvitation({token,username:d.get("username"),displayName:d.get("display"),password:d.get("password"),device:{name:"Web browser",clientName:"VyNode Web",platform:navigator.platform||"web"}});done(u)}catch(x){setError(x instanceof Error?x.message:"Unable to accept invitation")}}
-  return <main className="auth"><section className="auth-card"><div className="mark large">V</div><h1>{invite?.serverName||"VyNode Media"}</h1>{invite?<><p>You were invited as <strong>{invite.invitation.role}</strong> with access to {invite.invitation.libraries.map(x=>x.libraryName).join(", ")||"no libraries"}.</p><form onSubmit={submit}><label>Display name<input name="display" required maxLength={100}/></label><label>Username<input name="username" required pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,63}"/></label><label>Password<input name="password" type="password" minLength={10} required/></label><button>Create account</button></form></>:!error&&<p>Checking invitation…</p>}{error&&<p className="form-error" role="alert">{error}</p>}</section></main>
+  return <main className="auth"><section className="auth-card"><div className="mark large">V</div><h1>{invite?.serverName||"VyNode Media"}</h1>{invite?<><p>You were invited as <strong>{invite.invitation.role}</strong> with access to {invite.invitation.libraries.map(x=>x.libraryName).join(", ")||"no libraries"}.</p><form onSubmit={submit}><label>Display name<input name="display" required maxLength={100}/></label><label>Username<input name="username" required pattern={"[A-Za-z0-9][A-Za-z0-9._\\-]{2,63}"}/></label><label>Password<input name="password" type="password" minLength={10} required/></label><button>Create account</button></form></>:!error&&<p>Checking invitation…</p>}{error&&<p className="form-error" role="alert">{error}</p>}</section></main>
 }
 
 function PairDevice(){const [code,setCode]=useState(""),[request,setRequest]=useState<import("./api").PairingRequest|null>(null),[message,setMessage]=useState("");async function find(e:FormEvent){e.preventDefault();setMessage("");try{setRequest(await api.lookupPairing(code))}catch(x){setMessage(x instanceof Error?x.message:"Pairing request unavailable")}}return <section><h2>Pair a device</h2><p>Enter the short code shown by your TV or native client. Approval creates a normal revocable device session.</p><form onSubmit={find}><label>Pairing code<input value={code} onChange={e=>setCode(e.target.value.toUpperCase())} placeholder="ABCD-7KQ2" maxLength={9} required/></label><button>Find device</button></form>{request&&<div className="list-row"><div><strong>{request.deviceName}</strong><p>{request.clientName} · {request.platform}<br/>Requested {new Date(request.requestedAt).toLocaleString()}</p></div><div><button onClick={()=>api.approvePairing(request.id).then(()=>{setMessage("Device approved. It may now complete normal session setup.");setRequest(null)})}>Approve</button><button className="danger" onClick={()=>api.denyPairing(request.id).then(()=>setRequest(null))}>Deny</button></div></div>}{message&&<p role="status">{message}</p>}</section>}
@@ -583,8 +617,8 @@ function Sessions() {
     load();
   }, []);
   return (
-    <section className="panel">
-      <h2>Active sessions</h2>
+    <section className="panel settings-page">
+      <div className="settings-heading"><p className="eyebrow">ACCOUNT SECURITY</p><h2>Active sessions</h2><p>Devices currently authorized for this VyNode account on the selected server.</p></div>
       {items.map((s) => (
         <div className="list-row" key={s.id}>
           <div>
@@ -643,8 +677,8 @@ function Users() {
     load();
   }
   return (
-    <section className="panel">
-      <h2>Users</h2>
+    <section className="panel admin-console">
+      <div className="admin-heading"><div><p className="eyebrow">SERVER PRINCIPALS</p><h2>Local server users</h2><p>Local principals, server roles, and status. Global accounts and library grants are managed separately.</p></div></div>
       {items.map((u) => (
         <div className="list-row" key={u.id}>
           <div>
@@ -665,7 +699,7 @@ function Users() {
         </div>
       ))}
       <form onSubmit={create}>
-        <h2>Add user</h2>
+        <h3>Add local server user</h3>
         <label>
           Display name
           <input name="display" required />
@@ -1444,7 +1478,18 @@ function ArtworkImage({
   className?: string;
 }) {
   const [src, setSrc] = useState("");
+  const [visible,setVisible]=useState(type === "BACKDROP");
+  const placeholderRef=useRef<HTMLDivElement>(null);
+  useEffect(()=>{
+    if(type === "BACKDROP" || visible)return;
+    const target=placeholderRef.current;
+    if(!target || !("IntersectionObserver" in window)){setVisible(true);return}
+    const observer=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting)){setVisible(true);observer.disconnect()}},{rootMargin:"320px"});
+    observer.observe(target);
+    return()=>observer.disconnect();
+  },[type,visible]);
   useEffect(() => {
+    if(!visible)return;
     let url = "";
     api
       .artwork(kind, id)
@@ -1461,15 +1506,18 @@ function ArtworkImage({
     return () => {
       if (url) URL.revokeObjectURL(url);
     };
-  }, [kind, id, type]);
+  }, [kind, id, type, visible]);
   return src ? (
     <img
       className={className || "poster-image"}
       src={src}
       alt={`${title} ${type.toLowerCase()}`}
+      decoding="async"
+      loading={type === "POSTER" ? "lazy" : "eager"}
     />
   ) : (
     <div
+      ref={placeholderRef}
       className={
         className === "backdrop-image"
           ? "backdrop-fallback"
@@ -1507,15 +1555,65 @@ function MediaCard({
     </button>
   );
 }
+function SearchPage({ go }: { go: (p: Page) => void }) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<import("./api").LocalSearch>({ movies: [], shows: [] });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    const value = query.trim();
+    if (!value) {
+      setResults({ movies: [], shows: [] });
+      setLoading(false);
+      setError("");
+      return;
+    }
+    setLoading(true);
+    const timer = window.setTimeout(() => {
+      api.search(value)
+        .then(setResults)
+        .catch((reason) => setError(reason instanceof Error ? reason.message : "Search is unavailable."))
+        .finally(() => setLoading(false));
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+  const count = results.movies.length + results.shows.length;
+  return (
+    <section className="content search-page">
+      <div className="page-heading">
+        <p className="eyebrow">FIND SOMETHING TO WATCH</p>
+        <h2>Search</h2>
+      </div>
+      <label className="media-search">
+        <span className="search-glyph" aria-hidden="true" />
+        <span className="sr-only">Search movies and shows</span>
+        <input
+          autoFocus
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search movies and shows"
+          autoComplete="off"
+        />
+      </label>
+      {loading && <div className="search-status" role="status">Searching…</div>}
+      {error && <div className="search-status error-state" role="alert"><strong>Search is unavailable</strong><span>{error}</span></div>}
+      {!query.trim() && <div className="search-status"><strong>Your whole library, one search away.</strong><span>Start with a movie or show title.</span></div>}
+      {query.trim() && !loading && !error && count === 0 && <div className="search-status"><strong>No results for “{query.trim()}”</strong><span>Check the title or try a shorter search.</span></div>}
+      {results.movies.length > 0 && <section className="search-group"><div className="row-heading"><h3>Movies</h3><span>{results.movies.length}</span></div><div className="poster-grid">{results.movies.map(item => <MediaCard key={item.id} kind="movies" id={item.id} title={item.title} year={item.year} go={go} />)}</div></section>}
+      {results.shows.length > 0 && <section className="search-group"><div className="row-heading"><h3>Shows</h3><span>{results.shows.length}</span></div><div className="poster-grid">{results.shows.map(item => <MediaCard key={item.id} kind="shows" id={item.id} title={item.title} year={item.year} go={go} />)}</div></section>}
+    </section>
+  );
+}
 function Movies({ go }: { go: (p: Page) => void }) {
   const [items, setItems] = useState<Movie[]>([]);
   useEffect(() => {
     api.movies().then((x) => setItems(x.movies));
   }, []);
   return (
-    <section className="panel media-panel">
-      <h2>Movies</h2>
-      {!items.length && <p>No identified movies yet.</p>}
+    <section className="content media-panel">
+      <div className="page-heading"><p className="eyebrow">YOUR LIBRARY</p><h2>Movies</h2></div>
+      {!items.length && <div className="search-status"><strong>No movies yet</strong><span>Movies appear here after a library scan identifies them.</span></div>}
       <div className="poster-grid">
         {items.map((x) => (
           <MediaCard
@@ -1554,7 +1652,7 @@ function MovieDetail({ id, go }: { id: string; go: (p: Page) => void }) {
       </section>
     );
   return (
-    <section className="panel detail-panel">
+    <section className="content detail-panel">
       <ArtworkImage
         kind="movies"
         id={id}
@@ -1562,16 +1660,14 @@ function MovieDetail({ id, go }: { id: string; go: (p: Page) => void }) {
         title={item.title}
         className="backdrop-image"
       />
-      <button onClick={() => go("movies")}>Back to movies</button>
+      <button className="detail-back" onClick={() => go("movies")}>Back to movies</button>
       <div className="detail-grid">
         <ArtworkImage kind="movies" id={id} type="POSTER" title={item.title} />
         <div>
-          <h2>
-            {item.title} {item.year && `(${item.year})`}
-          </h2>
-          <CurationActions type="MOVIE" id={id}/>
-          <p>
+          <h2>{item.title}</h2>
+          <p className="metadata-line">
             {[
+              item.year,
               item.runtimeMinutes && `${item.runtimeMinutes} min`,
               item.contentRating,
               item.rating && `TMDb ${item.rating.toFixed(1)}`,
@@ -1579,23 +1675,22 @@ function MovieDetail({ id, go }: { id: string; go: (p: Page) => void }) {
               .filter(Boolean)
               .join(" · ")}
           </p>
-          <p>{item.overview || "No overview available."}</p>
-          <p>{item.genres?.join(" · ")}</p>
-          {playable && (
-            <button onClick={() => go(`watch/movie/${id}`)}>
+          <p className="detail-genres">{item.genres?.join(" · ")}</p>
+          <p className="detail-overview">{item.overview || "No overview available."}</p>
+          <div className="detail-actions">{playable && (
+            <button className="primary-action" onClick={() => go(`watch/movie/${id}`)}>
               {progress && progress.position >= 30
                 ? `Resume at ${formatTime(progress.position)}`
                 : "Play"}
             </button>
-          )}
-          <DownloadAction type="MOVIE" id={id}/>
+          )}<CurationActions type="MOVIE" id={id}/><DownloadAction type="MOVIE" id={id}/></div>
           {playable === false && (
             <p>
               This browser cannot directly play any available version yet.
               Transcoding support is coming in a later phase.
             </p>
           )}{" "}
-          <button
+          <button className="detail-quiet-action"
             onClick={() =>
               api
                 .markWatched("MOVIE", id, !progress?.watched)
@@ -1606,7 +1701,7 @@ function MovieDetail({ id, go }: { id: string; go: (p: Page) => void }) {
           </button>
         </div>
       </div>
-      <h3>Physical versions</h3>
+      <details className="technical-details"><summary>Versions and technical information</summary>
       {item.versions?.map((v) => (
         <div className="list-row" key={v.id}>
           <span>
@@ -1615,7 +1710,7 @@ function MovieDetail({ id, go }: { id: string; go: (p: Page) => void }) {
               .join(" · ") || "Media version"}
           </span>
         </div>
-      ))}
+      ))}</details>
       <ArtworkManager kind="movies" id={id} />
       <MarkerManager type="MOVIE" id={id}/>
       <OptimizationManager type="MOVIE" id={id} versions={item.versions??[]}/>
@@ -1628,9 +1723,9 @@ function Shows({ go }: { go: (p: Page) => void }) {
     api.shows().then((x) => setItems(x.shows));
   }, []);
   return (
-    <section className="panel media-panel">
-      <h2>Shows</h2>
-      {!items.length && <p>No identified shows yet.</p>}
+    <section className="content media-panel">
+      <div className="page-heading"><p className="eyebrow">YOUR LIBRARY</p><h2>Shows</h2></div>
+      {!items.length && <div className="search-status"><strong>No shows yet</strong><span>Shows appear here after a TV library scan identifies them.</span></div>}
       <div className="poster-grid">
         {items.map((x) => (
           <MediaCard
@@ -1648,8 +1743,12 @@ function Shows({ go }: { go: (p: Page) => void }) {
 }
 function ShowDetail({ id, go }: { id: string; go: (p: Page) => void }) {
   const [item, setItem] = useState<Show | null>(null);
+  const [seasonNumber, setSeasonNumber] = useState<number | null>(null);
   useEffect(() => {
-    api.show(id).then(setItem);
+    api.show(id).then((show) => {
+      setItem(show);
+      setSeasonNumber((current) => current ?? show.seasons?.find((season) => season.episodes.length)?.seasonNumber ?? show.seasons?.[0]?.seasonNumber ?? null);
+    });
   }, [id]);
   if (!item)
     return (
@@ -1658,8 +1757,10 @@ function ShowDetail({ id, go }: { id: string; go: (p: Page) => void }) {
         <div />
       </section>
     );
+  const selectedSeason = item.seasons?.find((season) => season.seasonNumber === seasonNumber);
+  const firstAvailableEpisode = item.seasons?.flatMap((season) => season.episodes).find((episode) => episode.available);
   return (
-    <section className="panel detail-panel">
+    <section className="content detail-panel">
       <ArtworkImage
         kind="shows"
         id={id}
@@ -1667,44 +1768,51 @@ function ShowDetail({ id, go }: { id: string; go: (p: Page) => void }) {
         title={item.title}
         className="backdrop-image"
       />
-      <button onClick={() => go("shows")}>Back to shows</button>
+      <button className="detail-back" onClick={() => go("shows")}>Back to shows</button>
       <div className="detail-grid">
         <ArtworkImage kind="shows" id={id} type="POSTER" title={item.title} />
         <div>
           <h2>{item.title}</h2>
-          <CurationActions type="SHOW" id={id}/>
-          <p>{item.overview || "No overview available."}</p>
+          <p className="metadata-line">{[item.year, item.rating && `Rated ${item.rating.toFixed(1)}`, ...(item.genres ?? [])].filter(Boolean).join(" · ")}</p>
+          <p className="detail-overview">{item.overview || "No overview available."}</p>
+          <div className="detail-actions">
+            {firstAvailableEpisode && <ShowPrimaryAction episodeId={firstAvailableEpisode.id} go={go}/>}
+            <CurationActions type="SHOW" id={id}/>
+          </div>
         </div>
       </div>
-      {item.seasons?.map((s) => (
-        <section key={s.id}>
-          <h3>
-            {s.seasonNumber === 0 ? "Specials" : `Season ${s.seasonNumber}`}
-          </h3>
-          {s.episodes.map((e) => (
-            <div className="list-row" key={e.id}>
-              <div>
-                <strong>
-                  {e.episodeNumber}. {e.title}
-                </strong>
-                <p>
-                  {e.airDate} · {e.available ? "Available" : "Unavailable"}
-                  <br />
-                  {e.overview}
-                </p>
-              </div>
-              {e.available && <span><EpisodePlay id={e.id} go={go} /><DownloadAction type="EPISODE" id={e.id}/></span>}
-              {e.available && <MarkerManager type="EPISODE" id={e.id}/>}
-            </div>
-          ))}
-        </section>
-      ))}
+      {selectedSeason && <section className="season-section">
+          <div className="season-heading">
+            <div><p className="eyebrow">EPISODES</p><h3>{selectedSeason.title || (selectedSeason.seasonNumber === 0 ? "Specials" : `Season ${selectedSeason.seasonNumber}`)}</h3></div>
+            <label className="season-selector"><span>Season</span><select value={selectedSeason.seasonNumber} onChange={(event) => setSeasonNumber(Number(event.target.value))}>
+              {item.seasons?.map((season) => <option key={season.id} value={season.seasonNumber}>{season.seasonNumber === 0 ? "Specials" : `Season ${season.seasonNumber}`}</option>)}
+            </select></label>
+          </div>
+          <div className="episode-list">{selectedSeason.episodes.map((e) => (
+            <article className="episode-card" key={e.id}>
+              <button className="episode-primary" disabled={!e.available} onClick={() => go(`watch/episode/${e.id}`)} aria-label={`${e.available ? "Play" : "Unavailable"} episode ${e.episodeNumber}: ${e.title}`}>
+                <span className="episode-art" aria-hidden="true"><b>{e.episodeNumber}</b></span>
+                <span className="episode-copy">
+                  <strong>{e.episodeNumber}. {e.title}</strong>
+                  <small>{[e.airDate, e.runtimeMinutes && `${e.runtimeMinutes} min`, e.available ? "Available" : "Unavailable"].filter(Boolean).join(" · ")}</small>
+                  {e.overview && <span className="episode-overview">{e.overview}</span>}
+                </span>
+                <span className="episode-play" aria-hidden="true">{e.available ? "Play" : "Unavailable"}</span>
+              </button>
+            </article>
+          ))}</div>
+        </section>}
       <ArtworkManager kind="shows" id={id} />
       <AnalysisManager targetType="SHOW" targetId={id}/>
     </section>
   );
 }
-function DownloadAction({type,id}:{type:"MOVIE"|"EPISODE";id:string}){const [profile,setProfile]=useState("MEDIUM"),[message,setMessage]=useState("");return <span><select aria-label="Offline quality" value={profile} onChange={e=>setProfile(e.target.value)}><option value="ORIGINAL">Original</option><option value="HIGH">High 1080p</option><option value="MEDIUM">Medium 720p</option><option value="LOW">Low 480p</option></select><button onClick={()=>api.createOfflineDownload(type,id,profile).then(x=>setMessage(x.assetState==="READY"?"Ready to download on this device.":"Offline version is preparing.")).catch(e=>setMessage(e.message))}>Download</button>{message&&<small role="status">{message}</small>}</span>}
+function ShowPrimaryAction({episodeId,go}:{episodeId:string;go:(p:Page)=>void}){
+  const [progress,setProgress]=useState<{position:number;duration:number;watched:boolean}|null>(null);
+  useEffect(()=>{api.progress("EPISODE",episodeId).then(setProgress).catch(()=>setProgress(null))},[episodeId]);
+  return <button className="primary-action" onClick={()=>go(`watch/episode/${episodeId}`)}>{progress&&!progress.watched&&progress.position>=30?`Resume at ${formatTime(progress.position)}`:"Play"}</button>
+}
+function DownloadAction({type,id}:{type:"MOVIE"|"EPISODE";id:string}){const [profile,setProfile]=useState("MEDIUM"),[message,setMessage]=useState("");return <span className="download-action"><select aria-label="Offline quality" value={profile} onChange={e=>setProfile(e.target.value)}><option value="ORIGINAL">Original</option><option value="HIGH">High 1080p</option><option value="MEDIUM">Medium 720p</option><option value="LOW">Low 480p</option></select><button onClick={()=>api.createOfflineDownload(type,id,profile).then(x=>setMessage(x.assetState==="READY"?"Ready to download on this device.":"Offline version is preparing.")).catch(e=>setMessage(e.message))}>Download</button>{message&&<small role="status">{message}</small>}</span>}
 function MarkerManager({type,id}:{type:"MOVIE"|"EPISODE";id:string}){
   const [admin,setAdmin]=useState(false),[markers,setMarkers]=useState<import("./api").MediaMarker[]>([]),[message,setMessage]=useState("");
   const load=()=>api.markers(type,id).then(x=>setMarkers(x.markers ?? []));
@@ -1730,13 +1838,13 @@ function AutomationAdmin(){
 }
 
 function CurationCard({item}:{item:import("./api").CurationItem}){const path=item.Type==="MOVIE"?`/movies/${item.ID}`:item.Type==="SHOW"?`/shows/${item.ID}`:`/watch/episode/${item.ID}`;return <a className="media-card" href={path}>{item.Type!=="EPISODE"?<ArtworkImage kind={item.Type==="MOVIE"?"movies":"shows"} id={item.ID} type="POSTER" title={item.Title}/>:<div className="poster-fallback">E</div>}<strong>{item.Title}</strong><span>{item.Subtitle||item.Year||item.Type}</span></a>}
-function CurationActions({type,id}:{type:"MOVIE"|"SHOW";id:string}){const [watch,setWatch]=useState(false),[favorite,setFavorite]=useState(false);useEffect(()=>{Promise.all([api.personal("watchlist"),api.personal("favorites")]).then(([w,f])=>{setWatch(w.items.some(x=>x.Type===type&&x.ID===id));setFavorite(f.items.some(x=>x.Type===type&&x.ID===id))})},[type,id]);return <div><button onClick={()=>api.togglePersonal("watchlist",type,id,!watch).then(()=>setWatch(!watch))}>{watch?"Remove from Watchlist":"Add to Watchlist"}</button><button onClick={()=>api.togglePersonal("favorites",type,id,!favorite).then(()=>setFavorite(!favorite))}>{favorite?"Remove Favorite":"Favorite"}</button></div>}
+function CurationActions({type,id}:{type:"MOVIE"|"SHOW";id:string}){const [watch,setWatch]=useState(false),[favorite,setFavorite]=useState(false);useEffect(()=>{Promise.all([api.personal("watchlist"),api.personal("favorites")]).then(([w,f])=>{setWatch(w.items.some(x=>x.Type===type&&x.ID===id));setFavorite(f.items.some(x=>x.Type===type&&x.ID===id))})},[type,id]);return <div className="curation-actions"><button onClick={()=>api.togglePersonal("watchlist",type,id,!watch).then(()=>setWatch(!watch))}>{watch?"Remove from Watchlist":"Watchlist"}</button><button onClick={()=>api.togglePersonal("favorites",type,id,!favorite).then(()=>setFavorite(!favorite))}>{favorite?"Remove Favorite":"Favorite"}</button></div>}
 function CollectionsPage({go,admin}:{go:(p:Page)=>void;admin:boolean}){const [manual,setManual]=useState<import("./api").Collection[]>([]),[smart,setSmart]=useState<import("./api").SmartCollection[]>([]),[message,setMessage]=useState("");const load=()=>Promise.all([api.collections(),api.smartCollections()]).then(([a,b])=>{setManual(a.collections??[]);setSmart(b.smartCollections??[])});useEffect(()=>{load()},[]);return <section className="content"><h2>Collections</h2><p>Manual collections preserve deliberate membership. Smart collections are dynamic saved queries.</p>{admin&&<><form onSubmit={e=>{e.preventDefault();const f=e.currentTarget,d=new FormData(f);api.saveCollection({Name:String(d.get("name")),Description:"",Scope:"SERVER_SHARED",Ordering:"CUSTOM"}).then(()=>{f.reset();load()}).catch(x=>setMessage(x.message))}}><h3>New manual collection</h3><input name="name" required placeholder="Collection name"/><button>Create</button></form><SmartBuilder after={load} message={setMessage}/></>}<h3>Manual</h3><div className="poster-grid">{manual.map(x=><button className="media-card" key={x.ID} onClick={()=>go(`collections/${x.ID}`)}>{x.ArtworkItemID?<ArtworkImage kind={x.ArtworkItemType==="MOVIE"?"movies":"shows"} id={x.ArtworkItemID} type="POSTER" title={x.Name}/>:<div className="poster-fallback">C</div>}<strong>{x.Name}</strong><span>Manual · {x.Scope.replace("_"," ")}</span></button>)}</div><h3>Dynamic</h3><div className="poster-grid">{smart.map(x=><button className="media-card" key={x.ID} onClick={()=>go(`collections/${x.ID}`)}><div className="poster-fallback">S</div><strong>{x.Name}</strong><span>Dynamic · {x.Scope.replace("_"," ")}</span></button>)}</div>{message&&<p role="status">{message}</p>}</section>}
 function SmartBuilder({after,message}:{after:()=>void;message:(x:string)=>void}){const [preview,setPreview]=useState("");const build=(f:HTMLFormElement)=>{const d=new FormData(f);return {Name:String(d.get("name")),Description:"",Scope:"SERVER_SHARED" as const,RuleSchemaVersion:1,Rule:{logic:"ALL" as const,children:[{field:String(d.get("field")),operator:String(d.get("operator")),value:String(d.get("value"))}]},SortField:"title",SortDirection:"ASC" as const,Limit:50}};return <form onSubmit={e=>{e.preventDefault();const f=e.currentTarget;api.saveSmart(build(f)).then(()=>{f.reset();after()}).catch(x=>message(x.message))}}><h3>New smart collection</h3><input name="name" required placeholder="Collection name"/><select name="field"><option value="genre">Genre</option><option value="title">Title</option><option value="year">Year</option><option value="resolution">Resolution</option><option value="videoCodec">Video codec</option><option value="hdr">HDR</option><option value="availability">Availability</option></select><select name="operator"><option value="EQUALS">equals</option><option value="CONTAINS">contains</option><option value="GTE">at least</option></select><input name="value" required placeholder="Value"/><button type="button" onClick={e=>api.previewSmart(build(e.currentTarget.form!)).then(x=>setPreview(`${x.count} matches`)).catch(x=>message(x.message))}>Preview</button><button>Save dynamic collection</button>{preview&&<span>{preview}</span>}</form>}
 function CollectionPage({id,go,admin}:{id:string;go:(p:Page)=>void;admin:boolean}){const [manual,setManual]=useState<import("./api").Collection|null>(null),[smart,setSmart]=useState<import("./api").SmartCollection|null>(null),[library,setLibrary]=useState<Array<{Type:string;ID:string;Title:string}>>([]),[selected,setSelected]=useState<string[]>([]);const load=()=>api.collection(id).then(setManual).catch(()=>api.smartCollection(id).then(setSmart));useEffect(()=>{load();if(admin)Promise.all([api.movies(),api.shows()]).then(([m,s])=>setLibrary([...m.movies.map(x=>({Type:"MOVIE",ID:x.id,Title:x.title})),...s.shows.map(x=>({Type:"SHOW",ID:x.id,Title:x.title}))]))},[id,admin]);const x=manual??smart;const move=(i:number,d:number)=>{if(!manual)return;const copy=[...manual.Items],j=i+d;if(j<0||j>=copy.length)return;[copy[i],copy[j]]=[copy[j],copy[i]];api.reorderCollection(id,copy.map(v=>`${v.Type}:${v.ID}`)).then(load)};return <section className="content"><button onClick={()=>go("collections")}>Back</button><h2>{x?.Name??"Collection"}</h2><p>{manual?"Manual collection":"Dynamic smart collection"}</p>{admin&&manual&&<><button onClick={()=>confirm("Delete this collection? Media will remain untouched.")&&api.deleteCollection(id).then(()=>go("collections"))}>Delete collection</button><details><summary>Add multiple library items</summary>{library.filter(v=>!manual.Items.some(i=>i.Type===v.Type&&i.ID===v.ID)).map(v=><label key={`${v.Type}-${v.ID}`}><input type="checkbox" checked={selected.includes(`${v.Type}:${v.ID}`)} onChange={e=>setSelected(a=>e.target.checked?[...a,`${v.Type}:${v.ID}`]:a.filter(k=>k!==`${v.Type}:${v.ID}`))}/>{v.Title} · {v.Type}</label>)}<button onClick={()=>api.addCollectionItems(id,selected.map(k=>{const [Type,ID]=k.split(":");return {Type,ID}})).then(()=>{setSelected([]);load()})}>Add selected</button></details></>}<div className="poster-grid">{x?.Items?.map((it,i)=><div key={`${it.Type}-${it.ID}-${i}`}><CurationCard item={it}/>{admin&&manual&&<><button onClick={()=>move(i,-1)}>Up</button><button onClick={()=>move(i,1)}>Down</button><button onClick={()=>api.removeCollectionItem(id,it.Type,it.ID).then(load)}>Remove</button></>}</div>)}</div></section>}
 function PlaylistsPage(){const [items,setItems]=useState<import("./api").Playlist[]>([]),[active,setActive]=useState<import("./api").Playlist|null>(null);const load=()=>api.playlists().then(x=>setItems(x.playlists??[]));const open=(id:string)=>api.playlist(id).then(x=>setActive({...x,Items:x.Items??[]}));useEffect(()=>{load()},[]);const move=(i:number,d:number)=>{if(!active)return;const copy=[...(active.Items??[])],j=i+d;if(j<0||j>=copy.length)return;[copy[i],copy[j]]=[copy[j],copy[i]];api.reorderPlaylist(active.ID,copy.map(x=>x.ArtworkID)).then(()=>open(active.ID))};return <section className="content"><h2>Playlists</h2><p>Personal ordered Movie and Episode queues. Duplicate entries are allowed.</p><form onSubmit={e=>{e.preventDefault();const f=e.currentTarget,d=new FormData(f);api.savePlaylist({Name:String(d.get("name")),Description:""}).then(()=>{f.reset();load()})}}><input name="name" required placeholder="Playlist name"/><button>Create</button></form>{items.map(x=><div className="list-row" key={x.ID}><button onClick={()=>open(x.ID)}>{x.Name}</button><button onClick={()=>api.deletePlaylist(x.ID).then(()=>{setActive(null);load()})}>Delete</button></div>)}{active&&<section><h3>{active.Name}</h3><form onSubmit={e=>{e.preventDefault();const f=e.currentTarget,d=new FormData(f);api.addPlaylistItem(active.ID,String(d.get("type")),String(d.get("id"))).then(()=>{f.reset();open(active.ID)})}}><select name="type"><option>MOVIE</option><option>EPISODE</option></select><input name="id" required placeholder="Logical media ID"/><button>Add item</button></form>{(active.Items??[]).map((x,i)=><div className="list-row" key={x.ArtworkID}><span>{x.Title} · {x.Type}{x.Subtitle&&` · ${x.Subtitle}`}</span><span><button onClick={()=>location.assign(`/watch/${x.Type.toLowerCase()}/${x.ID}`)}>Play</button><button onClick={()=>move(i,-1)}>Up</button><button onClick={()=>move(i,1)}>Down</button><button onClick={()=>api.removePlaylistItem(active.ID,x.ArtworkID).then(()=>open(active.ID))}>Remove</button></span></div>)}</section>}</section>}
 function PersonalPage({kind,go}:{kind:"watchlist"|"favorites";go:(p:Page)=>void}){const [items,setItems]=useState<import("./api").CurationItem[]>([]);useEffect(()=>{api.personal(kind).then(x=>setItems(x.items??[]))},[kind]);return <section className="content"><h2>{kind==="watchlist"?"My Watchlist":"Favorites"}</h2><div className="poster-grid">{items.map((x,i)=><div key={`${x.Type}-${x.ID}-${i}`}><CurationCard item={x}/><button onClick={()=>api.togglePersonal(kind,x.Type,x.ID,false).then(()=>setItems(v=>v.filter(y=>y!==x)))}>Remove</button></div>)}</div>{!items.length&&<p>Nothing here yet.</p>}<button onClick={()=>go("home")}>Home</button></section>}
-function HomeSettings(){const [rows,setRows]=useState<import("./api").HomeRow[]>([]),[message,setMessage]=useState("");const load=()=>api.homeRows().then(x=>setRows(x.rows??[]));useEffect(()=>{load()},[]);const move=(i:number,d:number)=>{const copy=[...rows],j=i+d;if(j<0||j>=copy.length)return;[copy[i],copy[j]]=[copy[j],copy[i]];api.reorderHome(copy.map(x=>x.ID)).then(load)};return <section className="content"><h2>Home rows</h2><p>Each account has its own ordered layout. Empty rows stay configured here but are omitted from Home.</p>{rows.map((r,i)=><div className="list-row" key={r.ID}><span><strong>{r.Title}</strong><br/>{r.Type} · limit {r.Limit}</span><span><button aria-label={`Move ${r.Title} up`} onClick={()=>move(i,-1)}>Up</button><button aria-label={`Move ${r.Title} down`} onClick={()=>move(i,1)}>Down</button><button onClick={()=>api.saveHomeRow({...r,Enabled:!r.Enabled}).then(load)}>{r.Enabled?"Disable":"Enable"}</button><button onClick={()=>api.deleteHomeRow(r.ID).then(load)}>Remove</button></span></div>)}<form onSubmit={e=>{e.preventDefault();const f=e.currentTarget,d=new FormData(f),type=String(d.get("type"));api.saveHomeRow({Type:type,Title:String(d.get("title")),SourceID:["COLLECTION","SMART_COLLECTION","PLAYLIST"].includes(type)?String(d.get("source")):"",Enabled:true,Limit:Number(d.get("limit"))}).then(()=>{f.reset();load()}).catch(x=>setMessage(x.message))}}><h3>Add row</h3><select name="type"><option>WATCHLIST</option><option>FAVORITES</option><option>RECENTLY_ADDED_MOVIES</option><option>RECENTLY_ADDED_SHOWS</option><option>COLLECTION</option><option>SMART_COLLECTION</option><option>PLAYLIST</option></select><input name="title" required placeholder="Row title"/><input name="source" placeholder="Collection or playlist ID"/><select name="limit"><option>10</option><option>20</option><option>30</option></select><button>Add row</button></form>{message&&<p role="status">{message}</p>}</section>}
+function HomeSettings(){const [rows,setRows]=useState<import("./api").HomeRow[]>([]),[message,setMessage]=useState("");const load=()=>api.homeRows().then(x=>setRows(x.rows??[]));useEffect(()=>{load()},[]);const move=(i:number,d:number)=>{const copy=[...rows],j=i+d;if(j<0||j>=copy.length)return;[copy[i],copy[j]]=[copy[j],copy[i]];api.reorderHome(copy.map(x=>x.ID)).then(load)};return <section className="content settings-page"><div className="settings-heading"><p className="eyebrow">HOME CUSTOMIZATION</p><h2>Home rows</h2><p>Choose the media rows shown for this account. Empty rows remain configured but stay out of Home.</p></div>{rows.map((r,i)=><div className="list-row" key={r.ID}><span><strong>{r.Title}</strong><br/>{r.Type} · limit {r.Limit}</span><span><button aria-label={`Move ${r.Title} up`} onClick={()=>move(i,-1)}>Up</button><button aria-label={`Move ${r.Title} down`} onClick={()=>move(i,1)}>Down</button><button onClick={()=>api.saveHomeRow({...r,Enabled:!r.Enabled}).then(load)}>{r.Enabled?"Disable":"Enable"}</button><button className="danger" onClick={()=>api.deleteHomeRow(r.ID).then(load)}>Remove</button></span></div>)}<form onSubmit={e=>{e.preventDefault();const f=e.currentTarget,d=new FormData(f),type=String(d.get("type"));api.saveHomeRow({Type:type,Title:String(d.get("title")),SourceID:["COLLECTION","SMART_COLLECTION","PLAYLIST"].includes(type)?String(d.get("source")):"",Enabled:true,Limit:Number(d.get("limit"))}).then(()=>{f.reset();load()}).catch(x=>setMessage(x.message))}}><h3>Add row</h3><label>Row type<select name="type"><option>WATCHLIST</option><option>FAVORITES</option><option>RECENTLY_ADDED_MOVIES</option><option>RECENTLY_ADDED_SHOWS</option><option>COLLECTION</option><option>SMART_COLLECTION</option><option>PLAYLIST</option></select></label><label>Title<input name="title" required placeholder="Row title"/></label><label>Source ID<input name="source" placeholder="Collection or playlist ID"/><small>Needed only for collection and playlist rows.</small></label><label>Item limit<select name="limit"><option>10</option><option>20</option><option>30</option></select></label><button>Add row</button></form>{message&&<p role="status">{message}</p>}</section>}
 
 function ArtworkManager({
   kind,
