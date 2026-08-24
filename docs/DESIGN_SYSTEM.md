@@ -16,13 +16,15 @@ The canonical conceptual tokens live in `packages/design-tokens/tokens.css`; Com
 
 ### Color
 
-- Background: `#080D0F`; subtle background: `#0D1416`.
-- Surface: `#121B1E`; raised: `#192428`; overlay: `#202D31`.
-- Text: `#F4F7F7`; muted: `#A8B5B9`; subtle: `#74858B`.
-- VyNode accent: `#63D7BD`; high emphasis: `#8CE8D3`; accent ink: `#05251F`.
-- Danger: `#FF786C`; warning: `#E9BD68`; focus: `#A8F4E3`.
+- Background: `#090A0D`; subtle background: `#0F1014`; raised background: `#13151A`.
+- Surface: `#16181D`; raised: `#1D2026`; overlay: `#24272E`.
+- Text: `#F5F5F6`; muted: `#A9ABB2`; subtle: `#737680`.
+- VyNode accent: warm orange `#F4A340`; high emphasis: `#FFC06A`; accent ink: `#241306`.
+- Danger: `#FF786C`; warning: `#E9BD68`; focus: `#FFD08A`.
 
 The accent is reserved for primary actions, selected navigation, progress, and short status cues. It is not a decorative gradient applied indiscriminately.
+
+Product accent and semantic status are separate systems. Success, warning, danger, and information states keep their own accessible colors and must not be recolored orange merely to match branding. Conversely, success green must never be reused as VyNode branding or ambient chrome.
 
 ### Spacing and shape
 
@@ -58,9 +60,11 @@ Shared variants are Poster, Landscape/Episode, Compact, Continue Watching, and C
 - Web desktop: persistent compact rail grouped into Browse, Administration, and Settings.
 - Web mobile: five-item bottom navigation for Home, Movies, Shows, Downloads, and Account.
 - Android phone: native compact top-level destinations; secondary destinations remain contextual.
-- Android TV: artwork rows, a small unobtrusive header, and explicit D-pad focus.
+- Android TV: a dedicated quiet rail reserves 92dp and expands as an overlay without reflowing content. Home, Movies, Shows, Search, Downloads, Server, and Account appear only because each is functional. Selected destination uses a restrained surface tint and orange label; actual focus alone receives the 3–4dp focus ring.
 
 Administration never appears as an undifferentiated extension of the consumer Browse list.
+
+TV content owns initial focus. Home starts on the feature Play/Resume action; library grids start on the first media card; Search starts at query entry; details start on Play/Resume. Left from a leftmost content target enters the rail, Right returns to the destination content requester, and Back at a top-level destination moves between content and rail rather than exiting unpredictably. Detail and player Back return through their recorded origin. Player menus close before playback exits and return focus to their invoking control.
 
 ### Dialogs, states, and tables
 
