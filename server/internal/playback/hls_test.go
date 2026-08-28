@@ -23,6 +23,15 @@ func TestHLSArgumentsAndTraversal(t *testing.T) {
 	}
 }
 
+func TestHLSCopiesSupportedVideoForWindowsRemux(t *testing.T) {
+	h := NewHLS("ffmpeg", t.TempDir(), 1)
+	r := HLSRequest{SessionID: "session", SourcePath: "/media/input.mkv", AudioStreamIndex: 1, Plan: PipelinePlan{Video: StreamPlan{Action: "COPY"}, Audio: StreamPlan{Action: "COPY", SourceCodec: "aac"}}}
+	a := h.args(r, filepath.Join(t.TempDir(), "out"))
+	if !containsArg(a, "copy") || containsArg(a, "libx264") {
+		t.Fatalf("copy plan unexpectedly transcodes: %v", a)
+	}
+}
+
 func TestHLSCapacityIsBounded(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("test helper uses a POSIX executable")

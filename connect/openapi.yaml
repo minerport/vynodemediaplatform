@@ -3,40 +3,40 @@ info: {title: VyNode Connect API, version: 0.1.0}
 servers: [{url: https://connect.example.invalid/api/v1}]
 paths:
   /account/register:
-    post: {summary: Create a global account, responses: {'200': {description: Global session}, '429': {description: Rate limited}}}
+    post: {operationId: registerGlobalAccount, summary: Create a global account, responses: {'200': {description: Global session}, '429': {description: Rate limited}}}
   /account/login:
-    post: {summary: Start a global device session, responses: {'200': {description: Global session}, '401': {description: Invalid credentials}}}
+    post: {operationId: loginGlobalAccount, summary: Start a global device session, responses: {'200': {description: Global session}, '401': {description: Invalid credentials}}}
   /account/refresh:
-    post: {summary: Rotate a global refresh token, responses: {'200': {description: Rotated session}, '401': {description: Revoked or reused token}}}
+    post: {operationId: refreshGlobalSession, summary: Rotate a global refresh token, responses: {'200': {description: Rotated session}, '401': {description: Revoked or reused token}}}
   /account/logout:
-    post: {summary: Revoke current global session, security: [{bearerAuth: []}], responses: {'200': {description: Revoked}}}
+    post: {operationId: logoutGlobalSession, summary: Revoke current global session, security: [{bearerAuth: []}], responses: {'200': {description: Revoked}, '401': {description: Authentication required}}}
   /account/me:
-    get: {summary: Get global profile, security: [{bearerAuth: []}], responses: {'200': {description: Account}}}
+    get: {operationId: getGlobalAccount, summary: Get global profile, security: [{bearerAuth: []}], responses: {'200': {description: Account}, '401': {description: Authentication required}}}
   /devices:
-    get: {summary: List global devices, security: [{bearerAuth: []}], responses: {'200': {description: Devices}}}
+    get: {operationId: listGlobalDevices, summary: List global devices, security: [{bearerAuth: []}], responses: {'200': {description: Devices}, '401': {description: Authentication required}}}
   /devices/{deviceId}:
     parameters: [{name: deviceId, in: path, required: true, schema: {type: string}}]
-    delete: {summary: Revoke a global device and its global sessions, security: [{bearerAuth: []}], responses: {'200': {description: Revoked}, '401': {description: Unknown device}}}
+    delete: {operationId: revokeGlobalDevice, summary: Revoke a global device and its global sessions, security: [{bearerAuth: []}], responses: {'200': {description: Revoked}, '401': {description: Unknown device}}}
   /servers:
-    get: {summary: List linked servers, security: [{bearerAuth: []}], responses: {'200': {description: Server descriptors}}}
+    get: {operationId: listLinkedServers, summary: List linked servers, security: [{bearerAuth: []}], responses: {'200': {description: Server descriptors}, '401': {description: Authentication required}}}
   /servers/{serverId}/assertion:
     parameters: [{name: serverId, in: path, required: true, schema: {type: string}}]
-    post: {summary: Create a short-lived server assertion, security: [{bearerAuth: []}], responses: {'200': {description: Assertion}, '401': {description: Not linked}}}
+    post: {operationId: createServerAssertion, summary: Create a short-lived server assertion, security: [{bearerAuth: []}], responses: {'200': {description: Assertion}, '401': {description: Not linked}}}
   /device-codes:
-    post: {summary: Begin TV device authorization, responses: {'200': {description: Device and user codes}}}
+    post: {operationId: createDeviceCode, summary: Begin TV device authorization, responses: {'200': {description: Device and user codes}, '429': {description: Rate limited}}}
   /device-codes/exchange:
-    post: {summary: Poll and exchange an approved code, responses: {'200': {description: Global session}, '409': {description: Authorization pending}, '410': {description: Expired or consumed}}}
+    post: {operationId: exchangeDeviceCode, summary: Poll and exchange an approved code, responses: {'200': {description: Global session}, '409': {description: Authorization pending}, '410': {description: Expired or consumed}}}
   /device-codes/approve:
-    post: {summary: Approve a TV user code, security: [{bearerAuth: []}], responses: {'200': {description: Approved}, '410': {description: Expired or consumed}}}
+    post: {operationId: approveDeviceCode, summary: Approve a TV user code, security: [{bearerAuth: []}], responses: {'200': {description: Approved}, '410': {description: Expired or consumed}}}
   /device-codes/deny:
-    post: {summary: Deny a TV user code, security: [{bearerAuth: []}], responses: {'200': {description: Denied}, '410': {description: Expired or consumed}}}
+    post: {operationId: denyDeviceCode, summary: Deny a TV user code, security: [{bearerAuth: []}], responses: {'200': {description: Denied}, '410': {description: Expired or consumed}}}
   /invitations/accept:
-    post: {summary: Bind a bearer invitation and issue server-specific redemption and login assertions, security: [{bearerAuth: []}], responses: {'200': {description: Invitation acceptance}, '401': {description: Wrong account}, '410': {description: "Expired, revoked, or consumed"}}}
+    post: {operationId: acceptInvitation, summary: Bind a bearer invitation and issue server-specific redemption and login assertions, security: [{bearerAuth: []}], responses: {'200': {description: Invitation acceptance}, '401': {description: Wrong account}, '410': {description: "Expired, revoked, or consumed"}}}
   /servers/invitations/register:
-    post: {summary: Register a server-signed opaque invitation intent, responses: {'200': {description: Bearer invitation}, '401': {description: Invalid server signature}, '409': {description: Duplicate invitation}}}
+    post: {operationId: registerServerInvitation, summary: Register a server-signed opaque invitation intent, responses: {'200': {description: Bearer invitation}, '401': {description: Invalid server signature}, '409': {description: Duplicate invitation}}}
   /servers/invitations/revoke:
-    post: {summary: Revoke a server-signed invitation, responses: {'200': {description: Revoked}, '401': {description: Invalid server signature}}}
+    post: {operationId: revokeServerInvitation, summary: Revoke a server-signed invitation, responses: {'200': {description: Revoked}, '401': {description: Invalid server signature}}}
   /servers/device-revocations:
-    post: {summary: Pull durable global-device revocations using a time-bucketed server signature, responses: {'200': {description: Revoked devices linked to this server}, '401': {description: Invalid server signature}}}
+    post: {operationId: listServerDeviceRevocations, summary: Pull durable global-device revocations using a time-bucketed server signature, responses: {'200': {description: Revoked devices linked to this server}, '401': {description: Invalid server signature}}}
 components:
   securitySchemes: {bearerAuth: {type: http, scheme: bearer, bearerFormat: JWT}}

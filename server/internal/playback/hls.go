@@ -175,18 +175,22 @@ func (h *HLSManager) outputSize(dir string) int64 {
 	return total
 }
 func (h *HLSManager) args(r HLSRequest, dir string) []string {
-	p := r.Plan.Video
-	bitrate := p.TargetBitrate
-	if bitrate <= 0 {
-		bitrate = 4_000_000
-	}
-	max := bitrate * 5 / 4
 	a := []string{"-hide_banner", "-loglevel", "error", "-nostdin", "-i", r.SourcePath, "-map", "0:v:0"}
 	if r.AudioStreamIndex >= 0 {
 		a = append(a, "-map", fmt.Sprintf("0:%d", r.AudioStreamIndex))
 	}
-	scale := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease:force_divisible_by=2,format=yuv420p", p.TargetWidth, p.TargetHeight)
-	a = append(a, "-vf", scale, "-c:v", "libx264", "-preset", "veryfast", "-b:v", strconv.FormatInt(bitrate, 10), "-maxrate", strconv.FormatInt(max, 10), "-bufsize", strconv.FormatInt(max*2, 10), "-g", "96", "-keyint_min", "96", "-sc_threshold", "0")
+	if r.Plan.Video.Action == "COPY" {
+		a = append(a, "-c:v", "copy")
+	} else {
+		p := r.Plan.Video
+		bitrate := p.TargetBitrate
+		if bitrate <= 0 {
+			bitrate = 4_000_000
+		}
+		max := bitrate * 5 / 4
+		scale := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease:force_divisible_by=2,format=yuv420p", p.TargetWidth, p.TargetHeight)
+		a = append(a, "-vf", scale, "-c:v", "libx264", "-preset", "veryfast", "-b:v", strconv.FormatInt(bitrate, 10), "-maxrate", strconv.FormatInt(max, 10), "-bufsize", strconv.FormatInt(max*2, 10), "-g", "96", "-keyint_min", "96", "-sc_threshold", "0")
+	}
 	if r.Plan.Audio.Action == "COPY" && strings.EqualFold(r.Plan.Audio.SourceCodec, "aac") {
 		a = append(a, "-c:a", "copy")
 	} else {

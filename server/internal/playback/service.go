@@ -248,10 +248,13 @@ func (s *Service) Start(ctx context.Context, userID, authSessionID string, in St
 	if decision.Mode != Unsupported {
 		out.MediaURL = "/api/v1/playback/sessions/" + sessionID + "/media?token=" + token
 	}
-	if decision.Mode == VideoTranscode {
+	windowsHLS := strings.EqualFold(in.Capabilities.Platform, "WINDOWS") && (decision.Mode == DirectStream || decision.Mode == AudioTranscode)
+	if decision.Mode == VideoTranscode || windowsHLS {
 		out.HLSURL = "/api/v1/playback/sessions/" + sessionID + "/hls/master.m3u8?token=" + token
 		out.MediaURL = ""
-		out.Qualities = QualityProfiles(selected)
+		if decision.Mode == VideoTranscode {
+			out.Qualities = QualityProfiles(selected)
+		}
 	}
 	if subtitleID != "" && decision.Mode != Unsupported {
 		out.SubtitleURL = "/api/v1/playback/sessions/" + sessionID + "/subtitles/" + subtitleID
@@ -634,7 +637,7 @@ func (s *Service) hlsFile(ctx context.Context, sessionID, token, name string, ow
 	if e != nil {
 		return "", e
 	}
-	if a.Mode != VideoTranscode {
+	if a.Mode != VideoTranscode && a.Mode != DirectStream && a.Mode != AudioTranscode {
 		return "", ErrValidation
 	}
 	if s.hls == nil {
@@ -663,7 +666,7 @@ func (s *Service) hlsFile(ctx context.Context, sessionID, token, name string, ow
 					return "FFMPEG_EXITED"
 				}
 				return nil
-			}(), sessionID, VideoTranscode)
+			}(), sessionID, a.Mode)
 		}
 		if e = s.hls.Ensure(HLSRequest{SessionID: sessionID, SourcePath: a.Path, AudioStreamIndex: a.AudioStreamIndex, Plan: a.Plan, Progress: progress, Done: done}); e != nil {
 			return "", e
@@ -674,7 +677,7 @@ func (s *Service) hlsFile(ctx context.Context, sessionID, token, name string, ow
 			s.hls.Cancel(sessionID)
 			return "", e
 		}
-		_, _ = s.db.ExecContext(ctx, "INSERT INTO playback_pipeline_instances(id,playback_session_id,state,mode,start_seconds,started_at,running_at) VALUES(?,?,?,?,?,?,?)", id(), sessionID, PipelineRunning, VideoTranscode, 0, now, now)
+		_, _ = s.db.ExecContext(ctx, "INSERT INTO playback_pipeline_instances(id,playback_session_id,state,mode,start_seconds,started_at,running_at) VALUES(?,?,?,?,?,?,?)", id(), sessionID, PipelineRunning, a.Mode, 0, now, now)
 	}
 	return s.hls.File(sessionID, name)
 }
