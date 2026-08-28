@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>VyNode.Windows</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x64;ARM64</Platforms>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
+    <UseWinUI>true</UseWinUI>
+    <WinUISDKReferences>false</WinUISDKReferences>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>VyNode</AssemblyName>
+    <Version>15.0.0</Version>
+    <VyNodeUpdatePublicKeyId Condition="'$(VyNodeUpdatePublicKeyId)' == ''"></VyNodeUpdatePublicKeyId>
+    <VyNodeUpdatePublicKeySpki Condition="'$(VyNodeUpdatePublicKeySpki)' == ''"></VyNodeUpdatePublicKeySpki>
+    <VyNodeUpdateMetadataUrl Condition="'$(VyNodeUpdateMetadataUrl)' == ''">https://updates.vynode.app/windows/stable/manifest.json</VyNodeUpdateMetadataUrl>
+    <VyNodeUpdateSignatureUrl Condition="'$(VyNodeUpdateSignatureUrl)' == ''">https://updates.vynode.app/windows/stable/manifest.sig</VyNodeUpdateSignatureUrl>
+  </PropertyGroup>
+  <ItemGroup>
+    <AssemblyMetadata Include="VyNode.UpdatePublicKeyId" Value="$(VyNodeUpdatePublicKeyId)" />
+    <AssemblyMetadata Include="VyNode.UpdatePublicKeySpki" Value="$(VyNodeUpdatePublicKeySpki)" />
+    <AssemblyMetadata Include="VyNode.UpdateMetadataUrl" Value="$(VyNodeUpdateMetadataUrl)" />
+    <AssemblyMetadata Include="VyNode.UpdateSignatureUrl" Value="$(VyNodeUpdateSignatureUrl)" />
+  </ItemGroup>
+  <ItemGroup>
+    <Manifest Include="$(ApplicationManifest)" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2526" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.4.0" />
+  </ItemGroup>
+  <Target Name="CopyWinUiResourcesToPublishDirectory" AfterTargets="Publish">
+    <ItemGroup>
+      <VyNodeCompiledXaml Include="$(OutputPath)*.xbf" />
+    </ItemGroup>
+    <Copy SourceFiles="$(ProjectPriFullPath)" DestinationFolder="$(PublishDir)" Condition="Exists('$(ProjectPriFullPath)')" />
+    <Copy SourceFiles="@(VyNodeCompiledXaml)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

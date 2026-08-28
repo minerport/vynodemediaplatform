@@ -17,3 +17,12 @@ func TestSingleRange(t *testing.T) {
 		})
 	}
 }
+
+func TestSignedHLSChildrenIncludeMediaToken(t *testing.T) {
+	if got := appendMediaToken("segment-000001.m4s", "a+b"); got != "segment-000001.m4s?token=a%2Bb" {
+		t.Fatalf("segment URI = %q", got)
+	}
+	if got := appendHLSAttributeToken(`#EXT-X-MAP:URI="init.mp4"`, "a+b"); got != `#EXT-X-MAP:URI="init.mp4?token=a%2Bb"` {
+		t.Fatalf("map URI = %q", got)
+	}
+}

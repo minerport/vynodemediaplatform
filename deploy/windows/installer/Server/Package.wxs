@@ -1,0 +1,46 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:fire="http://wixtoolset.org/schemas/v4/wxs/firewall" xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package Name="VyNode Media Server" Manufacturer="VyNode" Version="15.0.0" Scope="perMachine" UpgradeCode="03D4ED77-29DE-4A7D-BC49-7F60F75F5218">
+    <MajorUpgrade DowngradeErrorMessage="A newer VyNode Media Server version is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="VyNodeRoot" Name="VyNode"><Directory Id="ServerFolder" Name="Media Server" /></Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="VyNodeDataRoot" Name="VyNode"><Directory Id="ServerDataFolder" Name="Media Server" /></Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder"><Directory Id="VyNodeMenu" Name="VyNode" /></StandardDirectory>
+    <ComponentGroup Id="ServerComponents" Directory="ServerFolder">
+      <Component Id="ServerExecutable" Bitness="always64">
+        <File Id="ServerExe" Source="$(var.ServerExe)" KeyPath="yes">
+          <fire:FirewallException Id="ServerLanFirewall" Name="VyNode Media Server (Local network)" Scope="localSubnet" Protocol="tcp" Port="8096" />
+        </File>
+        <ServiceInstall Id="VyNodeService" Name="VyNodeMediaServer" DisplayName="VyNode Media Server" Description="Indexes and streams media for VyNode clients." Type="ownProcess" Start="auto" ErrorControl="normal" Account="NT AUTHORITY\LocalService">
+          <util:ServiceConfig FirstFailureActionType="restart" SecondFailureActionType="restart" ThirdFailureActionType="none" RestartServiceDelayInSeconds="30" ResetPeriodInDays="1" />
+        </ServiceInstall>
+        <ServiceControl Id="ControlVyNodeService" Name="VyNodeMediaServer" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
+        <RegistryValue Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\VyNodeMediaServer" Name="DelayedAutoStart" Type="integer" Value="1" />
+      </Component>
+    </ComponentGroup>
+    <ComponentGroup Id="ServerManagerComponents" Directory="ServerFolder">
+      <Files Include="$(var.ServerManagerPublish)\**" />
+    </ComponentGroup>
+    <ComponentGroup Id="ServerManagerShortcut" Directory="VyNodeMenu">
+      <Component>
+        <Shortcut Id="ServerManagerStartMenu" Name="VyNode Server Manager" Target="[ServerFolder]VyNode.ServerManager.exe" WorkingDirectory="ServerFolder" />
+        <RemoveFolder Id="RemoveServerManagerMenu" On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\VyNode\Media Server" Name="ManagerInstalled" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+    <ComponentGroup Id="ServerData" Directory="ServerDataFolder">
+      <Component Id="ServerDataPermissionsV3" Permanent="yes">
+        <CreateFolder>
+          <PermissionEx Sddl="D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1301bf;;;LS)(A;OICI;0x1200a9;;;BU)" />
+        </CreateFolder>
+        <RegistryValue Root="HKLM" Key="Software\VyNode\Media Server" Name="DataInitialized" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+    <Feature Id="Server" Title="VyNode Media Server">
+      <ComponentGroupRef Id="ServerComponents" /><ComponentGroupRef Id="ServerManagerComponents" /><ComponentGroupRef Id="ServerManagerShortcut" /><ComponentGroupRef Id="ServerData" />
+    </Feature>
+  </Package>
+</Wix>

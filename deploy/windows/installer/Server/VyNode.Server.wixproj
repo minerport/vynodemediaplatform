@@ -1,0 +1,13 @@
+<Project Sdk="WixToolset.Sdk/7.0.0">
+  <PropertyGroup>
+    <OutputName>VyNode-Media-Server-unsigned</OutputName>
+    <OutputType>Package</OutputType>
+    <Platform>x64</Platform>
+    <DefineConstants>ServerExe=$(ServerExe);ServerManagerPublish=$(ServerManagerPublish)</DefineConstants>
+    <AcceptEula>wix7</AcceptEula>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Firewall.wixext" Version="7.0.0" />
+    <PackageReference Include="WixToolset.Util.wixext" Version="7.0.0" />
+  </ItemGroup>
+</Project>

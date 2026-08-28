@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page x:Class="VyNode.Windows.ShellPage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" KeyDown="Page_KeyDown">
+  <Grid Background="{StaticResource VyBackground}">
+    <NavigationView x:Name="Navigation" PaneDisplayMode="LeftCompact" CompactPaneLength="58" OpenPaneLength="196" IsBackButtonVisible="Collapsed" SelectionChanged="Navigation_SelectionChanged" Background="{StaticResource VyBackground}">
+      <NavigationView.MenuItems>
+        <NavigationViewItem Content="Home" Tag="home" Icon="Home" />
+        <NavigationViewItem Content="Movies" Tag="movies"><NavigationViewItem.Icon><FontIcon Glyph="&#xE8B2;" /></NavigationViewItem.Icon></NavigationViewItem>
+        <NavigationViewItem Content="Shows" Tag="shows"><NavigationViewItem.Icon><FontIcon Glyph="&#xE7F4;" /></NavigationViewItem.Icon></NavigationViewItem>
+        <NavigationViewItem Content="Search" Tag="search" Icon="Find" />
+      </NavigationView.MenuItems>
+      <NavigationView.FooterMenuItems>
+        <NavigationViewItem Content="Account" Tag="account" Icon="Contact" />
+        <NavigationViewItem Content="Settings" Tag="settings" Icon="Setting" />
+      </NavigationView.FooterMenuItems>
+      <Grid>
+        <Grid.RowDefinitions><RowDefinition Height="68"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <Grid Padding="28,12,32,8">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <AutoSuggestBox x:Name="GlobalSearch" Width="520" MaxWidth="520" HorizontalAlignment="Left" PlaceholderText="Search your media" QueryIcon="Find" QuerySubmitted="GlobalSearch_QuerySubmitted" AutomationProperties.Name="Search your media" />
+          <Button Grid.Column="1" x:Name="ServerButton" Click="ServerButton_Click" Background="Transparent" />
+        </Grid>
+        <ScrollViewer Grid.Row="1" x:Name="PageScroll" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel x:Name="ContentPanel" Padding="30,16,34,48" Spacing="22" MaxWidth="1800" HorizontalAlignment="Stretch" />
+        </ScrollViewer>
+      </Grid>
+    </NavigationView>
+  </Grid>
+</Page>

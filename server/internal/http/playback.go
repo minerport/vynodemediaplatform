@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -149,7 +150,8 @@ func (h *Handler) startPlayback(w http.ResponseWriter, r *http.Request, p auth.P
 		h.playbackError(w, r, err)
 		return
 	}
-	if out.MediaURL != "" {
+	nativeClient := strings.EqualFold(strings.TrimSpace(r.Header.Get("X-VyNode-Client")), "native")
+	if out.MediaURL != "" && !nativeClient {
 		parts := strings.SplitN(out.MediaURL, "?token=", 2)
 		if len(parts) == 2 {
 			_, secure, _ := h.connection(r)
@@ -157,7 +159,7 @@ func (h *Handler) startPlayback(w http.ResponseWriter, r *http.Request, p auth.P
 			out.MediaURL = parts[0]
 		}
 	}
-	if out.HLSURL != "" {
+	if out.HLSURL != "" && !nativeClient {
 		parts := strings.SplitN(out.HLSURL, "?token=", 2)
 		if len(parts) == 2 {
 			_, secure, _ := h.connection(r)
@@ -281,10 +283,7 @@ func (h *Handler) playbackError(w http.ResponseWriter, r *http.Request, err erro
 }
 
 func (h *Handler) playbackHLS(w http.ResponseWriter, r *http.Request) {
-	token := ""
-	if c, e := r.Cookie(mediaCookie(r.PathValue("sessionId"))); e == nil {
-		token = c.Value
-	}
+	token := mediaAccessToken(r)
 	var p string
 	var e error
 	if raw := bearer(r); raw != "" {
@@ -303,6 +302,26 @@ func (h *Handler) playbackHLS(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.HasSuffix(p, ".m3u8") {
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		if token != "" && bearer(r) == "" {
+			body, readErr := os.ReadFile(p)
+			if readErr != nil {
+				h.playbackError(w, r, playback.ErrUnavailable)
+				return
+			}
+			lines := strings.Split(string(body), "\n")
+			for i, line := range lines {
+				trimmed := strings.TrimSpace(line)
+				if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+					lines[i] = appendMediaToken(line, token)
+				} else if strings.Contains(trimmed, `URI="`) {
+					lines[i] = appendHLSAttributeToken(line, token)
+				}
+			}
+			w.Header().Set("Cache-Control", "private, no-store")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			_, _ = w.Write([]byte(strings.Join(lines, "\n")))
+			return
+		}
 	} else if strings.HasSuffix(p, ".m4s") {
 		w.Header().Set("Content-Type", "video/iso.segment")
 	} else {
@@ -313,11 +332,30 @@ func (h *Handler) playbackHLS(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, p)
 }
 
-func (h *Handler) playbackMedia(w http.ResponseWriter, r *http.Request) {
-	token := ""
-	if c, e := r.Cookie(mediaCookie(r.PathValue("sessionId"))); e == nil {
-		token = c.Value
+func appendMediaToken(value, token string) string {
+	separator := "?"
+	if strings.Contains(value, "?") {
+		separator = "&"
 	}
+	return value + separator + "token=" + url.QueryEscape(token)
+}
+
+func appendHLSAttributeToken(line, token string) string {
+	start := strings.Index(line, `URI="`)
+	if start < 0 {
+		return line
+	}
+	start += len(`URI="`)
+	end := strings.Index(line[start:], `"`)
+	if end < 0 {
+		return line
+	}
+	end += start
+	return line[:start] + appendMediaToken(line[start:end], token) + line[end:]
+}
+
+func (h *Handler) playbackMedia(w http.ResponseWriter, r *http.Request) {
+	token := mediaAccessToken(r)
 	ownerVerified := false
 	if bearer(r) != "" {
 		p, e := h.auth.Authenticate(bearer(r))
@@ -339,11 +377,6 @@ func (h *Handler) playbackMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if a.Mode != playback.DirectPlay {
-		if r.Header.Get("Range") != "" {
-			w.Header().Set("Content-Range", "bytes */*")
-			w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
-			return
-		}
 		start := 0.0
 		if raw := r.URL.Query().Get("start"); raw != "" {
 			start, err = strconv.ParseFloat(raw, 64)
@@ -397,10 +430,7 @@ func (h *Handler) playbackMedia(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) playbackSubtitle(w http.ResponseWriter, r *http.Request) {
-	token := ""
-	if c, e := r.Cookie(mediaCookie(r.PathValue("sessionId"))); e == nil {
-		token = c.Value
-	}
+	token := mediaAccessToken(r)
 	var b []byte
 	var e error
 	if raw := bearer(r); raw != "" {
@@ -421,6 +451,12 @@ func (h *Handler) playbackSubtitle(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.WriteHeader(200)
 	_, _ = w.Write(b)
+}
+func mediaAccessToken(r *http.Request) string {
+	if c, err := r.Cookie(mediaCookie(r.PathValue("sessionId"))); err == nil && strings.TrimSpace(c.Value) != "" {
+		return c.Value
+	}
+	return strings.TrimSpace(r.URL.Query().Get("token"))
 }
 func (h *Handler) continueWatching(w http.ResponseWriter, r *http.Request, p auth.Principal) {
 	v, e := h.playback.ContinueWatching(r.Context(), p.UserID)

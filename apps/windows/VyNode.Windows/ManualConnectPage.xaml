@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page x:Class="VyNode.Windows.ManualConnectPage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Grid Background="{StaticResource VyBackground}">
+    <StackPanel Width="440" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14">
+      <TextBlock Text="Connect manually" Style="{StaticResource TitleTextBlockStyle}" Foreground="{StaticResource VyText}" />
+      <TextBlock Text="Advanced recovery for a local or Connect-unavailable server. VyNode verifies the server before sending credentials." Foreground="{StaticResource VyMuted}" TextWrapping="Wrap" />
+      <TextBox x:Name="AddressBox" Header="Server address" PlaceholderText="http://server.local:8096" AutomationProperties.Name="Local server address" />
+      <TextBox x:Name="UsernameBox" Header="Local username" AutomationProperties.Name="Local server username" />
+      <PasswordBox x:Name="PasswordBox" Header="Local password" AutomationProperties.Name="Local server password" />
+      <TextBlock x:Name="StatusText" Foreground="#FFFF786C" TextWrapping="Wrap" Visibility="Collapsed" AutomationProperties.LiveSetting="Assertive" />
+      <Button x:Name="ConnectButton" Content="Connect" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Stretch" Click="Connect_Click" />
+      <Button Content="Back" HorizontalAlignment="Left" Click="Back_Click" />
+    </StackPanel>
+  </Grid>
+</Page>
