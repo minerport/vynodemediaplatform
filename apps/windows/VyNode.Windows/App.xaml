@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Application x:Class="VyNode.Windows.App"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+      </ResourceDictionary.MergedDictionaries>
+      <Color x:Key="VyBackgroundColor">#FF090A0C</Color>
+      <Color x:Key="VySurfaceColor">#FF15171B</Color>
+      <Color x:Key="VyRaisedColor">#FF202329</Color>
+      <Color x:Key="VyAccentColor">#FFF4A340</Color>
+      <Color x:Key="VyFocusColor">#FFFFD08A</Color>
+      <Color x:Key="VyTextColor">#FFF5F3EF</Color>
+      <Color x:Key="VyMutedColor">#FFAAA7A3</Color>
+      <Color x:Key="SystemAccentColor">#FFF4A340</Color>
+      <SolidColorBrush x:Key="VyBackground" Color="{StaticResource VyBackgroundColor}" />
+      <SolidColorBrush x:Key="VySurface" Color="{StaticResource VySurfaceColor}" />
+      <SolidColorBrush x:Key="VyRaised" Color="{StaticResource VyRaisedColor}" />
+      <SolidColorBrush x:Key="VyAccent" Color="{StaticResource VyAccentColor}" />
+      <SolidColorBrush x:Key="VyFocus" Color="{StaticResource VyFocusColor}" />
+      <SolidColorBrush x:Key="VyText" Color="{StaticResource VyTextColor}" />
+      <SolidColorBrush x:Key="VyMuted" Color="{StaticResource VyMutedColor}" />
+      <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="{StaticResource VyAccentColor}" />
+      <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="{StaticResource VyAccentColor}" Opacity="0.88" />
+      <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="{StaticResource VyAccentColor}" Opacity="0.72" />
+      <SolidColorBrush x:Key="NavigationViewSelectionIndicatorForeground" Color="{StaticResource VyAccentColor}" />
+      <SolidColorBrush x:Key="FocusVisualPrimaryBrush" Color="{StaticResource VyFocusColor}" />
+      <SolidColorBrush x:Key="FocusVisualSecondaryBrush" Color="{StaticResource VyBackgroundColor}" />
+      <Style TargetType="Button">
+        <Setter Property="MinHeight" Value="40" /><Setter Property="Padding" Value="18,8" />
+        <Setter Property="CornerRadius" Value="10" />
+      </Style>
+      <Style x:Key="PrimaryButton" TargetType="Button">
+        <Setter Property="Background" Value="{StaticResource VyAccent}" />
+        <Setter Property="Foreground" Value="#FF241306" /><Setter Property="FontWeight" Value="SemiBold" />
+      </Style>
+    </ResourceDictionary>
+  </Application.Resources>
+</Application>

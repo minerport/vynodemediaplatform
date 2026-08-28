@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page x:Class="VyNode.Windows.PlayerPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      KeyDown="Page_KeyDown" Unloaded="Page_Unloaded"
+      Background="Black" IsTabStop="True">
+  <Grid x:Name="PlayerRoot" Background="Black" PointerMoved="PlayerRoot_PointerMoved">
+    <MediaPlayerElement x:Name="Video" AreTransportControlsEnabled="False" Stretch="Uniform" PointerMoved="PlayerRoot_PointerMoved" PointerPressed="Video_PointerPressed" />
+    <Grid x:Name="Controls" VerticalAlignment="Bottom" Padding="32,72,32,28">
+      <Grid.Background>
+        <LinearGradientBrush StartPoint="0.5,0" EndPoint="0.5,1">
+          <GradientStop Color="#00101012" Offset="0"/><GradientStop Color="#F2090A0C" Offset="1"/>
+        </LinearGradientBrush>
+      </Grid.Background>
+      <StackPanel Spacing="14">
+        <Grid><TextBlock x:Name="TitleText" FontSize="24" FontWeight="SemiBold" Foreground="White"/><TextBlock x:Name="StateText" HorizontalAlignment="Right" Foreground="#B8BBC2"/></Grid>
+        <Slider x:Name="Timeline" Minimum="0" ValueChanged="Timeline_ValueChanged" PointerPressed="Timeline_PointerPressed" PointerReleased="Timeline_PointerReleased" AutomationProperties.Name="Seek timeline" />
+        <Grid>
+          <TextBlock x:Name="PositionText" Foreground="#B8BBC2"/><TextBlock x:Name="DurationText" HorizontalAlignment="Right" Foreground="#B8BBC2"/>
+        </Grid>
+        <StackPanel Orientation="Horizontal" Spacing="10">
+          <Button x:Name="CloseButton" Content="Back" Click="CloseButton_Click" AutomationProperties.Name="Close player" />
+          <Button x:Name="SeekBackButton" Content="−10s" Click="SeekBack_Click" AutomationProperties.Name="Seek backward 10 seconds" />
+          <Button x:Name="PlayPauseButton" Content="Pause" Style="{StaticResource PrimaryButton}" Click="PlayPause_Click" AutomationProperties.Name="Pause" />
+          <Button x:Name="SeekForwardButton" Content="+10s" Click="SeekForward_Click" AutomationProperties.Name="Seek forward 10 seconds" />
+          <Button x:Name="AudioButton" Content="Audio" Click="AudioButton_Click" AutomationProperties.Name="Audio tracks" />
+          <Button x:Name="SubtitleButton" Content="Subtitles" Click="SubtitleButton_Click" AutomationProperties.Name="Subtitles" />
+          <Button x:Name="QualityButton" Content="Quality" Click="QualityButton_Click" AutomationProperties.Name="Quality" />
+          <Button x:Name="FullscreenButton" Content="Fullscreen" Click="Fullscreen_Click" AutomationProperties.Name="Enter fullscreen" />
+          <Button x:Name="SkipButton" Visibility="Collapsed" Click="SkipButton_Click" Style="{StaticResource PrimaryButton}" />
+        </StackPanel>
+      </StackPanel>
+    </Grid>
+    <InfoBar x:Name="ErrorBar" IsOpen="False" Severity="Error" Title="Playback unavailable" VerticalAlignment="Top" Margin="32,24">
+      <InfoBar.ActionButton><Button Content="Retry" Click="Retry_Click" AutomationProperties.Name="Retry playback" /></InfoBar.ActionButton>
+    </InfoBar>
+    <Border x:Name="UpNextPanel" Visibility="Collapsed" Background="#EE181A1F" CornerRadius="14" Padding="22" Width="420" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="32,32,32,160">
+      <StackPanel Spacing="12"><TextBlock Text="UP NEXT" Foreground="{StaticResource VyAccent}" FontWeight="SemiBold"/><TextBlock x:Name="UpNextTitle" FontSize="22" FontWeight="SemiBold" TextWrapping="Wrap"/><TextBlock x:Name="UpNextCountdown" Foreground="{StaticResource VyMuted}"/><StackPanel Orientation="Horizontal" Spacing="10"><Button Content="Play Now" Style="{StaticResource PrimaryButton}" Click="PlayNow_Click" AutomationProperties.Name="Play Up Next now"/><Button Content="Cancel" Click="CancelUpNext_Click" AutomationProperties.Name="Cancel Up Next"/></StackPanel></StackPanel>
+    </Border>
+    <Border x:Name="SubtitleSurface" Canvas.ZIndex="10" Translation="0,0,32" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="48,48,48,150" Padding="12,7" Background="#D9000000" CornerRadius="6" IsHitTestVisible="False">
+      <TextBlock x:Name="SubtitleText" Foreground="White" FontSize="24" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="1100" />
+    </Border>
+  </Grid>
+</Page>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page x:Class="VyNode.Windows.ServerSelectorPage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Grid Background="{StaticResource VyBackground}">
+    <StackPanel Width="620" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="16">
+      <TextBlock Text="Choose a server" Style="{StaticResource TitleTextBlockStyle}" Foreground="{StaticResource VyText}" />
+      <TextBlock Text="Your VyNode account is linked to multiple media servers." Foreground="{StaticResource VyMuted}" />
+      <ListView x:Name="ServersList" SelectionMode="Single" IsItemClickEnabled="True" ItemClick="Server_Click" AutomationProperties.Name="Linked VyNode servers">
+        <ListView.ItemTemplate><DataTemplate><Grid MinHeight="70" Padding="14"><StackPanel><TextBlock Text="{Binding Name}" FontSize="18" FontWeight="SemiBold"/><TextBlock Text="{Binding Relationship}" Foreground="{StaticResource VyMuted}"/></StackPanel></Grid></DataTemplate></ListView.ItemTemplate>
+      </ListView>
+      <ProgressRing x:Name="Busy" IsActive="False" Width="28" />
+      <TextBlock x:Name="ErrorText" Foreground="#FFFF786C" Visibility="Collapsed" />
+    </StackPanel>
+  </Grid>
+</Page>
