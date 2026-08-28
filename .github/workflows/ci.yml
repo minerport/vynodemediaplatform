@@ -46,3 +46,62 @@ jobs:
         with:
           name: vynode-android-apks
           path: apps/android/app/build/outputs/apk/**/*.apk
+  windows:
+    runs-on: windows-latest
+      env:
+        WINDOWS_SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
+        WINDOWS_SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
+        WINDOWS_UPDATE_PUBLIC_KEY_ID: ${{ vars.WINDOWS_UPDATE_PUBLIC_KEY_ID }}
+        WINDOWS_UPDATE_PUBLIC_KEY_SPKI: ${{ vars.WINDOWS_UPDATE_PUBLIC_KEY_SPKI }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: '10.0.x' }
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.24.x', cache: true }
+      - run: dotnet test apps/windows/VyNode.Windows.Tests/VyNode.Windows.Tests.csproj -c Release -p:Platform=x64
+        - name: Validate signed-release update trust configuration
+          if: ${{ env.WINDOWS_SIGNING_CERT_BASE64 != '' }}
+          shell: pwsh
+          run: |
+            if (-not $env:WINDOWS_UPDATE_PUBLIC_KEY_ID -or -not $env:WINDOWS_UPDATE_PUBLIC_KEY_SPKI) {
+              throw 'Signed Windows release builds require the pinned update public key ID and SPKI.'
+            }
+        - run: ./deploy/windows/build-client.ps1
+      - run: ./deploy/windows/build-server-installer.ps1
+      - name: Authenticode sign Windows release artifacts
+        if: ${{ env.WINDOWS_SIGNING_CERT_BASE64 != '' }}
+        shell: pwsh
+        run: |
+          $certificate = Join-Path $env:RUNNER_TEMP 'vynode-signing.pfx'
+          try {
+            [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:WINDOWS_SIGNING_CERT_BASE64))
+            $payloads = @(
+              'artifacts/windows/desktop/win-x64/VyNode.exe',
+              'artifacts/windows/vynode-server.exe',
+              'artifacts/windows/server-manager/VyNode.ServerManager.exe'
+            )
+            foreach ($target in $payloads) {
+              & signtool sign /fd SHA256 /td SHA256 /tr https://timestamp.digicert.com /f $certificate /p $env:WINDOWS_SIGNING_CERT_PASSWORD $target
+              if ($LASTEXITCODE -ne 0) { throw "Signing failed for $target." }
+              & signtool verify /pa /v $target
+              if ($LASTEXITCODE -ne 0) { throw "Signature verification failed for $target." }
+            }
+            dotnet build deploy/windows/installer/Desktop/VyNode.Desktop.wixproj -c Release -p:ClientPublish="$pwd\artifacts\windows\desktop\win-x64" -o artifacts/windows/installer
+            dotnet build deploy/windows/installer/Server/VyNode.Server.wixproj -c Release -p:ServerExe="$pwd\artifacts\windows\vynode-server.exe" -p:ServerManagerPublish="$pwd\artifacts\windows\server-manager" -o artifacts/windows/installer
+            foreach ($target in (Get-ChildItem artifacts/windows/installer -Filter '*.msi' | Select-Object -ExpandProperty FullName)) {
+              & signtool sign /fd SHA256 /td SHA256 /tr https://timestamp.digicert.com /f $certificate /p $env:WINDOWS_SIGNING_CERT_PASSWORD $target
+              if ($LASTEXITCODE -ne 0) { throw "Signing failed for $target." }
+              & signtool verify /pa /v $target
+              if ($LASTEXITCODE -ne 0) { throw "Signature verification failed for $target." }
+            }
+          } finally {
+            Remove-Item -LiteralPath $certificate -Force -ErrorAction SilentlyContinue
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vynode-windows-unsigned
+          path: |
+            artifacts/windows/desktop/win-x64/**
+            artifacts/windows/vynode-server.exe
+            artifacts/windows/installer/*.msi
