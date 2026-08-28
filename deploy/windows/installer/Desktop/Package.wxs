@@ -1,0 +1,28 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="VyNode Desktop" Manufacturer="VyNode" Version="15.0.0" Scope="perMachine" UpgradeCode="742E85D3-BAA9-4D49-B8B0-1E4472B64522">
+    <MajorUpgrade DowngradeErrorMessage="A newer VyNode Desktop version is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="VyNodeRoot" Name="VyNode">
+        <Directory Id="ClientInstallFolder" Name="Desktop" />
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="VyNodeMenu" Name="VyNode" />
+    </StandardDirectory>
+    <ComponentGroup Id="DesktopComponents" Directory="ClientInstallFolder">
+      <Files Include="$(var.ClientPublish)\**" />
+    </ComponentGroup>
+    <ComponentGroup Id="DesktopShortcuts" Directory="VyNodeMenu">
+      <Component>
+        <Shortcut Id="DesktopStartMenu" Name="VyNode" Target="[ClientInstallFolder]VyNode.exe" WorkingDirectory="ClientInstallFolder" />
+        <RemoveFolder Id="RemoveVyNodeMenu" On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\VyNode\Desktop" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+    <Feature Id="Desktop" Title="VyNode Desktop">
+      <ComponentGroupRef Id="DesktopComponents" />
+      <ComponentGroupRef Id="DesktopShortcuts" />
+    </Feature>
+  </Package>
+</Wix>

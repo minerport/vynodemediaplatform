@@ -4,11 +4,14 @@ node_modules/
 dist/
 coverage/
 artifacts/
+data/
 *.log
 *.db
 *.db-shm
 *.db-wal
 *.tsbuildinfo
+**/bin/
+**/obj/
 .idea/
 .vscode/
 .tmp-phase3-*/
