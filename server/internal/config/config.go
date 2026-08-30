@@ -26,8 +26,10 @@ type Config struct {
 	AllowedOrigin     string
 	WebDir            string
 	FFprobePath       string
+	FFprobeSource     string
 	ProbeConcurrency  int
 	FFmpegPath        string
+	FFmpegSource      string
 	PlaybackPipelines int
 	TranscodeDir      string
 	VideoTranscodes   int
@@ -50,8 +52,10 @@ func Load() (Config, error) {
 		AllowedOrigin:     envOr("VYNODE_ALLOWED_ORIGIN", ""),
 		WebDir:            envOr("VYNODE_WEB_DIR", ""),
 		FFprobePath:       envOr("VYNODE_FFPROBE_PATH", ""),
+		FFprobeSource:     mediaToolSource("VYNODE_FFPROBE_PATH", "VYNODE_FFPROBE_SOURCE"),
 		ProbeConcurrency:  2,
 		FFmpegPath:        envOr("VYNODE_FFMPEG_PATH", ""),
+		FFmpegSource:      mediaToolSource("VYNODE_FFMPEG_PATH", "VYNODE_FFMPEG_SOURCE"),
 		PlaybackPipelines: 2,
 		TranscodeDir:      envOr("VYNODE_TRANSCODE_DIR", "./data/transcode"),
 		VideoTranscodes:   1,
@@ -122,6 +126,16 @@ func Load() (Config, error) {
 		cfg.RemoteBitrate = value
 	}
 	return cfg, nil
+}
+
+func mediaToolSource(pathVariable, sourceVariable string) string {
+	if source := strings.ToLower(strings.TrimSpace(os.Getenv(sourceVariable))); source == "managed" || source == "custom" {
+		return source
+	}
+	if strings.TrimSpace(os.Getenv(pathVariable)) != "" {
+		return "custom"
+	}
+	return "unavailable"
 }
 
 func envOr(key, fallback string) string {

@@ -31,3 +31,17 @@ func TestLoadRejectsInvalidAddress(t *testing.T) {
 		t.Fatal("expected validation error")
 	}
 }
+
+func TestMediaToolSourceTracksManagedAndCustomPaths(t *testing.T) {
+	t.Setenv("VYNODE_FFMPEG_PATH", `C:\Program Files\VyNode\Media Server\tools\ffmpeg\ffmpeg.exe`)
+	t.Setenv("VYNODE_FFMPEG_SOURCE", "managed")
+	t.Setenv("VYNODE_FFPROBE_PATH", `D:\Admin Tools\ffprobe.exe`)
+	t.Setenv("VYNODE_FFPROBE_SOURCE", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.FFmpegSource != "managed" || cfg.FFprobeSource != "custom" {
+		t.Fatalf("unexpected media-tool sources: ffmpeg=%q ffprobe=%q", cfg.FFmpegSource, cfg.FFprobeSource)
+	}
+}

@@ -1,5 +1,5 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-  <Package Name="VyNode Desktop" Manufacturer="VyNode" Version="15.0.0" Scope="perMachine" UpgradeCode="742E85D3-BAA9-4D49-B8B0-1E4472B64522">
+  <Package Name="VyNode Desktop" Manufacturer="VyNode" Version="$(var.PackageVersion)" Scope="perMachine" UpgradeCode="742E85D3-BAA9-4D49-B8B0-1E4472B64522">
     <MajorUpgrade DowngradeErrorMessage="A newer VyNode Desktop version is already installed." />
     <MediaTemplate EmbedCab="yes" />
     <StandardDirectory Id="ProgramFiles6432Folder">

@@ -31,6 +31,7 @@ try {
         Sha256=$hash
         MinimumClientVersion='15.0.0'
         PublishedAt=[DateTime]::UtcNow.ToString('o')
+        SigningKeyId='acceptance-2026'
     }
     $metadata = [Text.Encoding]::UTF8.GetBytes(($manifest | ConvertTo-Json -Compress))
     [IO.File]::WriteAllBytes((Join-Path $feedRoot 'manifest.json'), $metadata)

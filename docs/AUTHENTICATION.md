@@ -8,7 +8,7 @@ Access tokens are HS256 JWTs lasting 15 minutes. Claims are user ID, session ID,
 
 Refresh credentials contain a session ID plus 256 random bits. Only SHA-256 digests are stored. They last 30 days, rotate at every exchange, and retain the immediately previous digest for replay detection. Reuse of the previous credential revokes the session and creates `SESSION_REFRESH_REUSE_DETECTED`; reauthentication is required.
 
-The browser keeps access tokens only in memory. Its refresh credential is an HttpOnly, SameSite=Strict cookie scoped to `/api/v1/auth`, marked Secure under HTTPS, and restored on reload. A shared single-flight promise ensures concurrent expired requests perform one rotation. Native clients opt into refresh-token response delivery with `X-VyNode-Client: native` and will eventually store it in Android Keystore, Apple Keychain, or Windows secure credential storage.
+The browser keeps access tokens only in memory. Its refresh credential is an HttpOnly, SameSite=Strict cookie scoped to `/api/v1/auth`, marked Secure under HTTPS, and restored on reload. A shared single-flight promise ensures concurrent expired requests perform one rotation. Native clients opt into refresh-token response delivery with `X-VyNode-Client: native`; Android uses Keystore-backed storage and Windows uses Credential Manager. Apple storage remains future work because no Apple client exists yet.
 
 Unsafe cookie requests use same-origin validation; exact `VYNODE_ALLOWED_ORIGIN` supports a separate trusted UI origin. Missing Origin is accepted for native clients using bearer credentials. `/config/vynode.db` and `/config/auth-signing.key` persist together. Authentication never requires Internet access.
 

@@ -8,6 +8,7 @@ service name is `VyNodeMediaServer`, uses delayed automatic startup, and runs as
 - Binaries: `%ProgramFiles%\VyNode\Media Server`
 - Persistent data: `%ProgramData%\VyNode\Media Server`
 - Logs: `%ProgramData%\VyNode\Media Server\logs\server.log`
+- Managed tools: `%ProgramFiles%\VyNode\Media Server\tools\ffmpeg`
 - Default HTTP port: 8096
 
 VyNode Server Manager is installed with the server package. It is intentionally
@@ -22,3 +23,8 @@ VyNode does not store share passwords in configuration.
 
 The server MSI stops/restarts the service during servicing and preserves ProgramData,
 including the SQLite database and Ed25519 identity, across upgrade and uninstall.
+The service verifies the managed FFmpeg and FFprobe hashes before use and never
+depends on global `PATH`. Administrators may persist absolute custom executable
+paths under `HKLM\SOFTWARE\VyNode\Media Server`; those settings survive upgrades.
+Authenticated admin diagnostics report each tool's path, version, and managed or
+custom status.

@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "status": "candidate-not-approved-for-distribution",
+  "sources": [
+    {
+      "name": "ffmpeg",
+      "version": "9.0",
+      "revision": "d32b387f2b0a484599d4587d651891f0c63c4238",
+      "url": "https://codeload.github.com/FFmpeg/FFmpeg/tar.gz/d32b387f2b0a484599d4587d651891f0c63c4238",
+      "sha256": "8a830a34bfaf98514b5d45cf6c01b1fe78b38d5e4c10eab0de2531b783c15f90",
+      "licenseEvidence": "LICENSE.md and COPYING.* in source archive; configured --enable-gpl --enable-version3"
+    },
+    {
+      "name": "x264",
+      "version": "revision-pinned",
+      "revision": "31e19f92f00c7003fa115047ce50978bc98c3a0d",
+      "url": "https://codeload.github.com/mirror/x264/tar.gz/31e19f92f00c7003fa115047ce50978bc98c3a0d",
+      "sha256": "d053c9d86988d6bc78237ca5205865c5ddf99c98ef4cd9927eec8f6d388f6dd9",
+      "licenseEvidence": "COPYING and per-file notices in source archive"
+    },
+    {
+      "name": "dav1d",
+      "version": "1.5.1",
+      "revision": "42b2b24fb8819f1ed3643aa9cf2a62f03868e3aa",
+      "url": "https://codeload.github.com/videolan/dav1d/tar.gz/42b2b24fb8819f1ed3643aa9cf2a62f03868e3aa",
+      "sha256": "e26d41e2f496c1598f418726b871ce252ce9f18f8dbe3ad199349a42ed2cb02f",
+      "licenseEvidence": "COPYING (BSD-2-Clause) and per-file notices in source archive"
+    }
+  ]
+}

@@ -10,7 +10,7 @@ public static class WindowsCapabilityService
     public static PlaybackCapabilityProfile Current() => new(
         1,
         "VyNode Windows",
-        "15.0.0",
+        "16.0.0",
         "WINDOWS",
         Environment.OSVersion.Version.ToString(),
         RuntimeInformation.OSArchitecture.ToString(),

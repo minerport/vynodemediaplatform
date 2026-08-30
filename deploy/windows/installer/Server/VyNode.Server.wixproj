@@ -3,11 +3,16 @@
     <OutputName>VyNode-Media-Server-unsigned</OutputName>
     <OutputType>Package</OutputType>
     <Platform>x64</Platform>
-    <DefineConstants>ServerExe=$(ServerExe);ServerManagerPublish=$(ServerManagerPublish)</DefineConstants>
+    <PackageVersion Condition="'$(PackageVersion)' == ''">16.0.0</PackageVersion>
+    <WebPayload Condition="'$(WebPayload)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\apps\web\dist</WebPayload>
+    <DefineConstants>ServerExe=$(ServerExe);ServerManagerPublish=$(ServerManagerPublish);MediaToolsPayload=$(MediaToolsPayload);WebPayload=$(WebPayload);PackageVersion=$(PackageVersion)</DefineConstants>
     <AcceptEula>wix7</AcceptEula>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="WixToolset.Firewall.wixext" Version="7.0.0" />
     <PackageReference Include="WixToolset.Util.wixext" Version="7.0.0" />
   </ItemGroup>
+  <Target Name="RequireWebAdminPayload" BeforeTargets="Build">
+    <Error Condition="!Exists('$(WebPayload)\index.html')" Text="Build the Web Admin payload before packaging the server MSI." />
+  </Target>
 </Project>

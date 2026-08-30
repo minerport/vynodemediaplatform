@@ -1,4 +1,4 @@
-param([string]$Version = '15.0.0', [string]$Commit = 'development')
+param([string]$Version = '16.0.0', [string]$Commit = 'development')
 $ErrorActionPreference = 'Stop'
 $output = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\artifacts\windows\vynode-server.exe'))
 New-Item -ItemType Directory -Force -Path (Split-Path $output) | Out-Null

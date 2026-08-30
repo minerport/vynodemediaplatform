@@ -1,11 +1,13 @@
 <?xml version="1.0"?>
 <Container version="2">
-  <Name>VyNode Media</Name><Repository>ghcr.io/vynode/media:latest</Repository><Registry>https://github.com/vynode/media/pkgs/container/media</Registry><Network>bridge</Network>
-  <WebUI>http://[IP]:[PORT:8096]/home</WebUI><Shell>sh</Shell><Support>https://github.com/vynode/media/issues</Support><Project>https://github.com/vynode/media</Project>
-  <Overview>Local-first VyNode Media physical library inventory with read-only scanning and FFprobe inspection. Metadata identification and playback are not implemented.</Overview><Category>MediaApp:Other</Category><ExtraParams>--stop-timeout=15</ExtraParams>
+  <Name>vynode-media-preview</Name><Repository>vynode-media:16.0.3-preview.1</Repository><Registry>https://github.com/minerport/vynodemediaplatform/releases</Registry><Network>bridge</Network>
+  <WebUI>http://[IP]:[PORT:8096]/</WebUI><Shell>sh</Shell><Support>https://github.com/minerport/vynodemediaplatform/issues</Support><Project>https://github.com/minerport/vynodemediaplatform</Project>
+  <Overview>Testing preview. Import the release Docker image with docker load before using this template; this is not a Docker Hub image. Local media server with bundled FFmpeg/FFprobe, Web administration and playback. Global discovery requires owner linking to connect.vynodehub.com and a reachable server endpoint. Not a production-certified release.</Overview><Category>MediaApp:Other</Category><ExtraParams>--stop-timeout=15</ExtraParams>
   <Config Name="Web UI" Target="8096" Default="8096" Mode="tcp" Description="VyNode HTTP port" Type="Port" Display="always" Required="true" Mask="false">8096</Config>
   <Config Name="Config" Target="/config" Default="/mnt/user/appdata/vynode-media" Mode="rw" Description="Persistent server database and configuration" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/vynode-media</Config>
   <Config Name="Media" Target="/media" Default="/mnt/user/media" Mode="ro" Description="Read-only media root; configure container-visible subpaths such as /media/movies" Type="Path" Display="always" Required="false" Mask="false">/mnt/user/media</Config>
-  <Config Name="Transcode" Target="/transcode" Default="/mnt/user/appdata/vynode-media/transcode" Mode="rw" Description="Future temporary transcode workspace" Type="Path" Display="advanced" Required="false" Mask="false">/mnt/user/appdata/vynode-media/transcode</Config>
+  <Config Name="Transcode" Target="/transcode" Default="/mnt/user/appdata/vynode-media/transcode" Mode="rw" Description="Temporary transcode workspace; writable by UID 65532" Type="Path" Display="advanced" Required="true" Mask="false">/mnt/user/appdata/vynode-media/transcode</Config>
+  <Config Name="Optimized" Target="/optimized" Default="/mnt/user/appdata/vynode-media/optimized" Mode="rw" Description="Optimized media; writable by UID 65532" Type="Path" Display="advanced" Required="true" Mask="false">/mnt/user/appdata/vynode-media/optimized</Config>
+  <Config Name="Downloads" Target="/downloads" Default="/mnt/user/appdata/vynode-media/downloads" Mode="rw" Description="Server-generated downloads; writable by UID 65532" Type="Path" Display="advanced" Required="true" Mask="false">/mnt/user/appdata/vynode-media/downloads</Config>
   <Config Name="Server Name" Target="VYNODE_SERVER_NAME" Default="VyNode Media" Mode="" Description="Local server display name" Type="Variable" Display="always" Required="true" Mask="false">VyNode Media</Config>
 </Container>

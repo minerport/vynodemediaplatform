@@ -14,17 +14,19 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>VyNode</AssemblyName>
-    <Version>15.0.0</Version>
+    <Version>16.0.0</Version>
     <VyNodeUpdatePublicKeyId Condition="'$(VyNodeUpdatePublicKeyId)' == ''"></VyNodeUpdatePublicKeyId>
     <VyNodeUpdatePublicKeySpki Condition="'$(VyNodeUpdatePublicKeySpki)' == ''"></VyNodeUpdatePublicKeySpki>
     <VyNodeUpdateMetadataUrl Condition="'$(VyNodeUpdateMetadataUrl)' == ''">https://updates.vynode.app/windows/stable/manifest.json</VyNodeUpdateMetadataUrl>
     <VyNodeUpdateSignatureUrl Condition="'$(VyNodeUpdateSignatureUrl)' == ''">https://updates.vynode.app/windows/stable/manifest.sig</VyNodeUpdateSignatureUrl>
+    <VyNodeUpdateChannel Condition="'$(VyNodeUpdateChannel)' == ''">stable</VyNodeUpdateChannel>
   </PropertyGroup>
   <ItemGroup>
     <AssemblyMetadata Include="VyNode.UpdatePublicKeyId" Value="$(VyNodeUpdatePublicKeyId)" />
     <AssemblyMetadata Include="VyNode.UpdatePublicKeySpki" Value="$(VyNodeUpdatePublicKeySpki)" />
     <AssemblyMetadata Include="VyNode.UpdateMetadataUrl" Value="$(VyNodeUpdateMetadataUrl)" />
     <AssemblyMetadata Include="VyNode.UpdateSignatureUrl" Value="$(VyNodeUpdateSignatureUrl)" />
+    <AssemblyMetadata Include="VyNode.UpdateChannel" Value="$(VyNodeUpdateChannel)" />
   </ItemGroup>
   <ItemGroup>
     <Manifest Include="$(ApplicationManifest)" />

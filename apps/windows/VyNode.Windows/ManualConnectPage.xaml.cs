@@ -34,5 +34,9 @@ public sealed partial class ManualConnectPage : Page
         finally { ConnectButton.IsEnabled = true; }
     }
 
-    private void Back_Click(object sender, RoutedEventArgs e) => ((MainWindow)App.Window).ShowSignIn();
+    private void Back_Click(object sender, RoutedEventArgs e)
+    {
+        if (Frame.CanGoBack) Frame.GoBack();
+        else ((MainWindow)App.Window).ShowSignIn();
+    }
 }

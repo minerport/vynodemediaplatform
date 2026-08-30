@@ -1,17 +1,17 @@
 # Current limitations
 
-Phase 2 provides physical inventory and remains intentionally not a playback or identified-metadata server.
-
-- SQLite migrations provide authentication and physical inventory; PostgreSQL is not implemented.
-- Local authentication, libraries, scanning, and FFprobe inspection are implemented; MFA, recovery, metadata identification, and playback are not.
-- Scan jobs and polling are active; WebSocket event transport is not.
-- No playback, transcoding, or hardware discovery.
-- No Windows Service installer; the Unraid template is not yet published or platform-tested.
-- The OpenAPI contract covers foundation, identity, library, scan, and inventory operations.
-- The web client provides administrative physical inventory, not consumer movie/show browsing.
-- Native binaries require a separately deployed web bundle and `VYNODE_WEB_DIR`; the Docker image includes it.
-- Go tests/builds require Go 1.24+, which must be installed in the development environment.
-
-Phase 2 adds physical inventory, but metadata identification, artwork, playback,
-transcoding, move detection, and real-time WebSocket scan events remain pending.
-Windows FFprobe is PATH/configured rather than bundled.
+- SQLite is the supported Media Server database; PostgreSQL is not implemented.
+- Built-in TLS/ACME and a media relay are not implemented. Direct deployments use
+  a deliberate reverse proxy or local-network endpoint.
+- MFA, passkeys, and automated owner-account recovery are not implemented.
+- Windows offline downloads are not implemented.
+- Apple clients are not implemented. Supported consumer surfaces are Web, Android
+  phone, Android TV, and native Windows Desktop.
+- The Windows Server MSI bundles pinned, integrity-checked FFmpeg and FFprobe, but
+  production publication still requires operator-supplied Authenticode and update
+  signing credentials. Unsigned artifacts are development builds only.
+- Image-based subtitle burn-in and automatic multi-rendition ABR remain outside
+  the current playback contract.
+- Connect is optional. During a Connect outage, previously authenticated local
+  access continues; explicit global sign-out removes account-linked credentials
+  and offline downloads from that device for privacy.

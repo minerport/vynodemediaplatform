@@ -94,6 +94,8 @@ public sealed class UpdateApplicationService
         {
             State = UpdateRuntimeState.LaunchingInstaller;
             await new UpdateInstallerHandoff(_packageRoot, _launcher).InstallAsync(ReadyPackage, ct);
+            State = UpdateRuntimeState.ReadyToRelaunch;
+            SafeMessage = "Update installed. Relaunch VyNode to finish.";
             return true;
         }
         catch (Exception ex) when (ex is IOException or CryptographicException or InvalidDataException or UnauthorizedAccessException or InvalidOperationException or Win32Exception)
@@ -102,5 +104,13 @@ public sealed class UpdateApplicationService
             SafeMessage = "The update package changed or is unavailable. Download it again before installing.";
             return false;
         }
+    }
+
+    public static void RelaunchInstalledApplication()
+    {
+        var installed = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "VyNode", "Desktop", "VyNode.exe");
+        if (!File.Exists(installed)) throw new FileNotFoundException("The updated VyNode application was not found.", installed);
+        _ = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(installed) { UseShellExecute = true })
+            ?? throw new InvalidOperationException("Windows could not relaunch VyNode.");
     }
 }

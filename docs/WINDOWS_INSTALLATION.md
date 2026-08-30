@@ -1,9 +1,10 @@
 # Windows installation
 
-Phase 15 uses two independent WiX v7 MSIs:
+VyNode uses two independent WiX v7 MSIs:
 
 - `VyNode-Desktop-unsigned.msi` installs the native viewer and Start menu entry.
-- `VyNode-Media-Server-unsigned.msi` installs the Go server service.
+- `VyNode-Media-Server-unsigned.msi` installs the Go server service and the pinned
+  FFmpeg/FFprobe payload for offline operation.
 
 This separation provides real client-only and server-only installations and prevents
 desktop uninstall from changing the service. A future optional bundle may offer
@@ -28,3 +29,4 @@ maintenance must not erase persistent data.
 
 Artifacts are unsigned development builds. SmartScreen warnings must not be bypassed.
 Production releases require Authenticode signing by CI using protected credentials.
+Unsigned files are always labeled development artifacts by the release manifest.

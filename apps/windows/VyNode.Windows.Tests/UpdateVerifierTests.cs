@@ -15,7 +15,7 @@ public sealed class UpdateVerifierTests
     {
         using var signer = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var publicKey = Convert.ToBase64String(signer.ExportSubjectPublicKeyInfo());
-        var body = Encoding.UTF8.GetBytes("{\"Channel\":\"stable\",\"Version\":\"15.1.0\",\"PackageUrl\":\"https://updates.vynode.app/windows/VyNode.msi\",\"Sha256\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"MinimumClientVersion\":\"15.0.0\",\"PublishedAt\":\"2026-08-24T00:00:00Z\"}");
+        var body = Encoding.UTF8.GetBytes("{\"Channel\":\"stable\",\"Version\":\"15.1.0\",\"PackageUrl\":\"https://updates.vynode.app/windows/VyNode.msi\",\"Sha256\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"MinimumClientVersion\":\"15.0.0\",\"PublishedAt\":\"2026-08-24T00:00:00Z\",\"SigningKeyId\":\"test-key\"}");
         var signature = signer.SignData(body, HashAlgorithmName.SHA256);
         var verifier = new UpdateVerifier(publicKey);
         Assert.AreEqual("15.1.0", verifier.Verify(body, signature).Version);
@@ -91,7 +91,7 @@ public sealed class UpdateVerifierTests
         Assert.AreEqual("15.1.0", result?.Version);
     }
 
-    private static byte[] ValidManifest(string version, string channel) => Encoding.UTF8.GetBytes($"{{\"Channel\":\"{channel}\",\"Version\":\"{version}\",\"PackageUrl\":\"https://updates.vynode.app/windows/VyNode.msi\",\"Sha256\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"MinimumClientVersion\":\"15.0.0\",\"PublishedAt\":\"2026-08-24T00:00:00Z\"}}");
+    private static byte[] ValidManifest(string version, string channel) => Encoding.UTF8.GetBytes($"{{\"Channel\":\"{channel}\",\"Version\":\"{version}\",\"PackageUrl\":\"https://updates.vynode.app/windows/VyNode.msi\",\"Sha256\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"MinimumClientVersion\":\"15.0.0\",\"PublishedAt\":\"2026-08-24T00:00:00Z\",\"SigningKeyId\":\"test-key\"}}");
 
     private sealed class DelegateHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send) : HttpMessageHandler
     {

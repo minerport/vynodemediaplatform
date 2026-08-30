@@ -13,5 +13,5 @@ public sealed class DeviceIdentity
         return id;
     }
     public static string DisplayName => $"{Environment.UserName}'s Windows PC";
-    public static Models.DeviceInput Describe() => new(DisplayName, "WINDOWS", "VyNode Desktop", "15.0.0", Environment.OSVersion.VersionString);
+    public static Models.DeviceInput Describe() => new(DisplayName, "WINDOWS", "VyNode Desktop", "16.0.0", Environment.OSVersion.VersionString);
 }

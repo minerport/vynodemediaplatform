@@ -187,10 +187,10 @@ public sealed partial class ShellPage : Page
         ContentPanel.Children.Add(SectionHeading("Playback"));
         ContentPanel.Children.Add(InfoBlock("Automatic quality", "Playback quality will be negotiated with each server using the Windows capability profile."));
         ContentPanel.Children.Add(SectionHeading("Updates"));
-        var currentVersion = typeof(App).Assembly.GetName().Version?.ToString(3) ?? "15.0.0";
+        var currentVersion = typeof(App).Assembly.GetName().Version?.ToString(3) ?? "16.0.0";
         var updateStatus = new TextBlock
         {
-            Text = _updates.SafeMessage ?? $"VyNode {currentVersion} uses the Stable update channel.",
+            Text = _updates.SafeMessage ?? $"VyNode {currentVersion} uses the {_updates.Trust?.Channel ?? "Stable"} update channel.",
             TextWrapping = TextWrapping.Wrap,
             Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
         };
@@ -202,6 +202,8 @@ public sealed partial class ShellPage : Page
         var install = new Button { Content = "Install Update", Style = (Style)Application.Current.Resources["PrimaryButton"], Visibility = Visibility.Collapsed };
         AutomationProperties.SetName(install, "Install verified VyNode update");
         var later = new Button { Content = "Later", Visibility = Visibility.Collapsed };
+        var relaunch = new Button { Content = "Relaunch VyNode", Style = (Style)Application.Current.Resources["PrimaryButton"], Visibility = Visibility.Collapsed };
+        AutomationProperties.SetName(relaunch, "Relaunch updated VyNode");
         AutomationProperties.SetName(later, "Install update later");
         check.Click += async (_, _) =>
         {
@@ -222,8 +224,14 @@ public sealed partial class ShellPage : Page
             bool launched;
             try { launched = await _updates.InstallReadyUpdateAsync(_pageCts.Token); }
             catch (OperationCanceledException) { return; }
-            updateStatus.Text = launched ? "Windows Installer started. Follow the normal Windows prompts." : _updates.SafeMessage;
+            updateStatus.Text = _updates.SafeMessage ?? "Update installation finished.";
+            relaunch.Visibility = launched && _updates.State == UpdateRuntimeState.ReadyToRelaunch ? Visibility.Visible : Visibility.Collapsed;
             if (!launched) { check.IsEnabled = true; install.IsEnabled = true; later.IsEnabled = true; }
+        };
+        relaunch.Click += (_, _) =>
+        {
+            try { UpdateApplicationService.RelaunchInstalledApplication(); Application.Current.Exit(); }
+            catch (Exception exception) { updateStatus.Text = exception.Message; }
         };
         later.Click += (_, _) =>
         {
@@ -231,7 +239,7 @@ public sealed partial class ShellPage : Page
             later.Visibility = Visibility.Collapsed;
             updateStatus.Text = "Update postponed. You can check again later.";
         };
-        updateActions.Children.Add(check); updateActions.Children.Add(install); updateActions.Children.Add(later);
+        updateActions.Children.Add(check); updateActions.Children.Add(install); updateActions.Children.Add(later); updateActions.Children.Add(relaunch);
         ContentPanel.Children.Add(updateActions);
         ContentPanel.Children.Add(SectionHeading("Advanced"));
         ContentPanel.Children.Add(InfoBlock("Connection diagnostics", $"Current server: {_session.Server.Name}\nConnection: verified local/server session"));

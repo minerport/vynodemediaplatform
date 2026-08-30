@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "name": "VyNode source-built FFmpeg",
+  "version": "9.0-vynode-source-preview",
+  "architecture": "windows-x64",
+  "distribution": "VyNode pinned-source preview build",
+  "archive": "vynode-media-tools-9.0-win-x64.zip",
+  "archiveUrl": "https://github.com/minerport/vynodemediaplatform/releases/download/preview-16.0.3.1/vynode-media-tools-9.0-win-x64.zip",
+  "archiveSha256": "5935df98156f1faffcb992270daf86b6cb510fe0a5e47b743edb99361e8cdbdd",
+  "ffmpegSha256": "ffff287c6685eb30925c7426ec370db7f3d6b3f7e0a661b74630a9e74daa56e5",
+  "ffprobeSha256": "c8986501d51fe3cc15b68a44935a73166ae9f26ab11303b851994bea01b8d828",
+  "license": "GPL-3.0-or-later",
+  "sourceCommit": "d32b387f2b0a484599d4587d651891f0c63c4238",
+  "sourceUrl": "https://github.com/FFmpeg/FFmpeg/commit/d32b387f2b0a484599d4587d651891f0c63c4238",
+  "correspondingSourceUrl": "https://github.com/minerport/vynodemediaplatform/releases/tag/preview-16.0.3.1",
+  "buildConfigurationEvidence": "README.txt",
+  "acceptanceStatus": "pending-installed-validation"
+}

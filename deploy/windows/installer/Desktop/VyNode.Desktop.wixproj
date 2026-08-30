@@ -3,7 +3,8 @@
     <OutputName>VyNode-Desktop-unsigned</OutputName>
     <OutputType>Package</OutputType>
     <Platform>x64</Platform>
-    <DefineConstants>ClientPublish=$(ClientPublish)</DefineConstants>
+    <PackageVersion Condition="'$(PackageVersion)' == ''">16.0.0</PackageVersion>
+    <DefineConstants>ClientPublish=$(ClientPublish);PackageVersion=$(PackageVersion)</DefineConstants>
     <AcceptEula>wix7</AcceptEula>
     <SuppressIces>ICE03</SuppressIces>
   </PropertyGroup>

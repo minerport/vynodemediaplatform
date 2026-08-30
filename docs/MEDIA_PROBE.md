@@ -1,6 +1,6 @@
 # FFprobe media inspection
 
-`MediaProbe` isolates the scanner from execution and supports deterministic fakes. FFprobe uses explicit `VYNODE_FFPROBE_PATH` or PATH discovery. Docker installs Debian's FFmpeg package; Windows uses PATH/configuration and does not yet bundle it.
+`MediaProbe` isolates the scanner from execution and supports deterministic fakes. Docker installs Debian's FFmpeg package. The Windows Server MSI installs a pinned, hash-verified FFprobe beside its matching FFmpeg under the protected VyNode installation directory and the service uses that absolute path; no global `PATH` or network download is required. Administrators can persist an explicit custom path under `HKLM\SOFTWARE\VyNode\Media Server`.
 
 Execution uses `exec.CommandContext`, never a shell. The filename is the `-i` argument, including dash-prefixed and Unicode names. Timeout is 45 seconds; cancellation kills the child; stdout is bounded to 8 MiB and stderr to 32 KiB; only structured JSON is parsed.
 

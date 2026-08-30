@@ -8,6 +8,13 @@
       <Button Content="Connect Manually" HorizontalAlignment="Left" Click="Manual_Click" />
       <Button Content="Sign Out" HorizontalAlignment="Left" Click="SignOut_Click" />
       <TextBlock x:Name="StatusText" Foreground="{StaticResource VyMuted}" TextWrapping="Wrap" />
+      <TextBlock Text="Updates" Style="{StaticResource SubtitleTextBlockStyle}" Foreground="{StaticResource VyText}" Margin="0,14,0,0" />
+      <TextBlock x:Name="UpdateStatusText" Foreground="{StaticResource VyMuted}" TextWrapping="Wrap" />
+      <StackPanel Orientation="Horizontal" Spacing="10">
+        <Button x:Name="CheckUpdatesButton" Content="Check for Updates" Click="CheckUpdates_Click" />
+        <Button x:Name="InstallUpdateButton" Content="Install Update" Style="{StaticResource PrimaryButton}" Visibility="Collapsed" Click="InstallUpdate_Click" />
+        <Button x:Name="RelaunchButton" Content="Relaunch VyNode" Style="{StaticResource PrimaryButton}" Visibility="Collapsed" Click="Relaunch_Click" />
+      </StackPanel>
     </StackPanel>
   </Grid>
 </Page>

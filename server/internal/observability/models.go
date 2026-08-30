@@ -77,6 +77,7 @@ type Job struct {
 }
 type Dashboard struct {
 	Version, Commit, ServerName, InstanceID, DatabaseType, FFmpegVersion, FFprobeVersion string
+	FFmpegPath, FFmpegSource, FFprobePath, FFprobeSource                                 string
 	Metrics                                                                              Metrics
 	Health                                                                               map[string]int
 	Libraries                                                                            LibraryStats
@@ -86,5 +87,6 @@ type Dashboard struct {
 type Paths struct{ Config, Transcode, Optimized, Downloads string }
 type SystemInfo struct {
 	Version, Commit, ServerName, InstanceID, DatabaseType, OS, Architecture, FFmpeg, FFprobe string
+	FFmpegSource, FFprobeSource                                                              string
 	StartedAt                                                                                time.Time
 }

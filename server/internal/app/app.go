@@ -75,7 +75,7 @@ func Initialize(ctx context.Context, cfg config.Config, logger *slog.Logger) (*R
 	playbackService.ConfigureVideo(playback.NewHLS(cfg.FFmpegPath, cfg.TranscodeDir, cfg.VideoTranscodes), cfg.RemoteBitrate)
 	intelligenceService := intelligence.New(store.DB, cfg.FFmpegPath, cfg.OptimizedDir)
 	curationService := curation.New(store.DB)
-	observabilityService, err := observability.New(store.DB, observability.SystemInfo{Version: info.Version, Commit: info.Commit, ServerName: info.ServerName, InstanceID: info.InstanceID, DatabaseType: info.DatabaseType, OS: info.OS, Architecture: info.Architecture, FFmpeg: cfg.FFmpegPath, FFprobe: cfg.FFprobePath, StartedAt: info.StartedAt}, observability.Paths{Config: cfg.ConfigDir, Transcode: cfg.TranscodeDir, Optimized: cfg.OptimizedDir, Downloads: cfg.DownloadsDir}, cfg.ConfigDir)
+	observabilityService, err := observability.New(store.DB, observability.SystemInfo{Version: info.Version, Commit: info.Commit, ServerName: info.ServerName, InstanceID: info.InstanceID, DatabaseType: info.DatabaseType, OS: info.OS, Architecture: info.Architecture, FFmpeg: cfg.FFmpegPath, FFprobe: cfg.FFprobePath, FFmpegSource: cfg.FFmpegSource, FFprobeSource: cfg.FFprobeSource, StartedAt: info.StartedAt}, observability.Paths{Config: cfg.ConfigDir, Transcode: cfg.TranscodeDir, Optimized: cfg.OptimizedDir, Downloads: cfg.DownloadsDir}, cfg.ConfigDir)
 	if err != nil {
 		return fail(fmt.Errorf("initialize observability: %w", err))
 	}

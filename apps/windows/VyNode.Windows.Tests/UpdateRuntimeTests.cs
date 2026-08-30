@@ -116,7 +116,7 @@ public sealed class UpdateRuntimeTests
             using var signer = ECDsa.Create(ECCurve.NamedCurves.nistP256);
             var packageBytes = Encoding.UTF8.GetBytes("acceptance msi");
             var hash = Convert.ToHexString(SHA256.HashData(packageBytes));
-            var metadata = Encoding.UTF8.GetBytes($"{{\"Channel\":\"stable\",\"Version\":\"15.0.1\",\"PackageUrl\":\"https://updates.test/VyNode.msi\",\"Sha256\":\"{hash}\",\"MinimumClientVersion\":\"15.0.0\",\"PublishedAt\":\"2026-08-24T00:00:00Z\"}}");
+            var metadata = Encoding.UTF8.GetBytes($"{{\"Channel\":\"stable\",\"Version\":\"15.0.1\",\"PackageUrl\":\"https://updates.test/VyNode.msi\",\"Sha256\":\"{hash}\",\"MinimumClientVersion\":\"15.0.0\",\"PublishedAt\":\"2026-08-24T00:00:00Z\",\"SigningKeyId\":\"test-key\"}}");
             var signature = signer.SignData(metadata, HashAlgorithmName.SHA256);
             using var http = new HttpClient(new FixtureHandler(request =>
                 request.RequestUri!.AbsolutePath.EndsWith(".sig", StringComparison.Ordinal) ? signature :
@@ -139,7 +139,7 @@ public sealed class UpdateRuntimeTests
     {
         var bytes = File.Exists(path) ? File.ReadAllBytes(path) : "missing"u8.ToArray();
         var hash = Convert.ToHexString(SHA256.HashData(bytes));
-        return new VerifiedUpdatePackage(new UpdateManifest("stable", "15.0.1", "https://updates.test/VyNode.msi", hash, "15.0.0", "2026-08-24T00:00:00Z"), path);
+        return new VerifiedUpdatePackage(new UpdateManifest("stable", "15.0.1", "https://updates.test/VyNode.msi", hash, "15.0.0", "2026-08-24T00:00:00Z", "test-key"), path);
     }
 
     private static async Task WithTempDirectory(Func<string, Task> test)
@@ -153,7 +153,32 @@ public sealed class UpdateRuntimeTests
     private sealed class RecordingLauncher : IInstallerLauncher
     {
         public string? LaunchedPath { get; private set; }
-        public void LaunchMsi(string absoluteMsiPath) => LaunchedPath = absoluteMsiPath;
+        public Task<int> LaunchMsiAsync(string absoluteMsiPath, CancellationToken ct)
+        {
+            LaunchedPath = absoluteMsiPath;
+            return Task.FromResult(0);
+        }
+    }
+
+    [TestMethod]
+    public async Task StableAndBetaFeedsAreIsolatedAndNeverDowngrade()
+    {
+        using var signer = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var key = Convert.ToBase64String(signer.ExportSubjectPublicKeyInfo());
+        static byte[] Metadata(string channel, string version) => Encoding.UTF8.GetBytes($"{{\"Channel\":\"{channel}\",\"Version\":\"{version}\",\"PackageUrl\":\"https://updates.test/VyNode.msi\",\"Sha256\":\"{new string('A', 64)}\",\"MinimumClientVersion\":\"15.0.0\",\"PublishedAt\":\"2026-08-29T00:00:00Z\",\"SigningKeyId\":\"test-key\"}}");
+
+        async Task<UpdateManifest?> Check(string feedChannel, string clientChannel, string current, string candidate)
+        {
+            var metadata = Metadata(feedChannel, candidate);
+            var signature = signer.SignData(metadata, HashAlgorithmName.SHA256);
+            using var http = new HttpClient(new FixtureHandler(request => request.RequestUri!.AbsolutePath.EndsWith(".sig", StringComparison.Ordinal) ? signature : metadata));
+            return await new UpdateFeedClient(http, new UpdateVerifier(key), TimeSpan.FromSeconds(2)).CheckAsync(new Uri("https://updates.test/manifest.json"), new Uri("https://updates.test/manifest.sig"), current, clientChannel, CancellationToken.None);
+        }
+
+        Assert.IsNull(await Check("beta", "stable", "16.0.0", "16.1.0"));
+        Assert.IsNotNull(await Check("beta", "beta", "16.0.0", "16.1.0"));
+        Assert.IsNull(await Check("stable", "stable", "16.0.0", "15.9.0"));
+        Assert.IsNull(await Check("stable", "stable", "16.0.0", "16.0.0"));
     }
 
     private sealed class FixtureHandler(Func<HttpRequestMessage, byte[]> content) : HttpMessageHandler

@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace VyNode.Windows.Services;
 
-public sealed record UpdateManifest(string Channel, string Version, string PackageUrl, string Sha256, string MinimumClientVersion, string PublishedAt);
+public sealed record UpdateManifest(string Channel, string Version, string PackageUrl, string Sha256, string MinimumClientVersion, string PublishedAt, string SigningKeyId);
 
 public sealed class UpdateVerifier
 {
@@ -24,6 +24,8 @@ public sealed class UpdateVerifier
         if (!Uri.TryCreate(manifest.PackageUrl, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
             throw new InvalidDataException("Update package URL must use HTTPS.");
         if (manifest.Sha256.Length != 64 || !manifest.Sha256.All(Uri.IsHexDigit)) throw new InvalidDataException("Update package hash is invalid.");
+        if (string.IsNullOrWhiteSpace(manifest.SigningKeyId) || manifest.SigningKeyId.Length > 128)
+            throw new InvalidDataException("Update signing key ID is invalid.");
         return manifest;
     }
 

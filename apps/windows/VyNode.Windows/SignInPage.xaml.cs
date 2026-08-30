@@ -11,6 +11,7 @@ public sealed partial class SignInPage : Page
     private readonly ConnectClient _connect = new();
     private readonly DeviceIdentity _identity = new();
     private readonly SecureCredentialStore _credentials = new();
+    private readonly LocalStateStore _state = new();
     private readonly SessionBootstrapper _bootstrapper = new();
     public SignInPage() => InitializeComponent();
 
@@ -25,6 +26,7 @@ public sealed partial class SignInPage : Page
             var login = await _connect.LoginAsync(UsernameBox.Text.Trim(), PasswordBox.Password, device, CancellationToken.None);
             stage = "secure credential storage";
             _credentials.SaveGlobal(login.User.Id, login.RefreshToken);
+            await _state.SaveGlobalAsync(login.User, device);
             stage = "linked server discovery";
             var servers = await _connect.ServersAsync(login.AccessToken, CancellationToken.None);
             var global = new GlobalContext(login, servers, device);

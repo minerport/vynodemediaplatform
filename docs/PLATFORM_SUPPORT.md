@@ -4,9 +4,9 @@ Remote access through a standards-compliant reverse proxy is platform-neutral. I
 
 Logical metadata and cached artwork use paths below the configured application-data directory on Windows and `/config` in containers/Unraid. Provider outages do not prevent startup, scanning, authentication, or local browsing.
 
-Phase 3 was runtime-validated in the Linux Docker image and cross-built for Windows. Native Windows Phase 3 execution remains unavailable in the validation environment because a host Go toolchain is not installed; this does not alter the already validated read-only Windows scanning design.
+Web, native Android phone, native Android TV, and native Windows Desktop are implemented clients. The Windows Media Server is distributed as a native SCM service with an offline MSI and managed FFmpeg/FFprobe runtime. Apple clients are not yet implemented.
 
-Direct Play uses the same Go HTTP delivery implementation in native and container builds. Unraid uses the identical OCI image; mounted media should remain read-only, and host disk/network throughput directly bounds original-byte delivery. Phase 4 Windows validation is cross-build-only unless noted in its completion report.
+Direct Play uses the same Go HTTP delivery implementation in native and container builds. Windows runtime acceptance also covers Direct Stream, audio transcode, video/HLS transcode, subtitles, reboot persistence, and SCM recovery. Unraid uses the Linux OCI image; mounted media should remain read-only, and host disk/network throughput directly bounds original-byte delivery.
 
 **SUPPORTED** is implemented and validated; **PLANNED** has an explicit roadmap;
 **FUTURE** is intentionally deferred and subject to platform evaluation.

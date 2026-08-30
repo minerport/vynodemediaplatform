@@ -33,6 +33,7 @@ public sealed record UpdateTrustConfiguration(
         metadata.TryGetValue("VyNode.UpdatePublicKeySpki", out var key);
         metadata.TryGetValue("VyNode.UpdateMetadataUrl", out var metadataUrl);
         metadata.TryGetValue("VyNode.UpdateSignatureUrl", out var signatureUrl);
+        metadata.TryGetValue("VyNode.UpdateChannel", out var channel);
 
         if (allowDevelopmentOverride)
         {
@@ -44,6 +45,7 @@ public sealed record UpdateTrustConfiguration(
         }
 
         if (string.IsNullOrWhiteSpace(keyId) || string.IsNullOrWhiteSpace(key)) return null;
+        if (channel is not ("stable" or "beta")) return null;
         if (!Uri.TryCreate(metadataUrl, UriKind.Absolute, out var metadataUri) || metadataUri.Scheme != Uri.UriSchemeHttps) return null;
         if (!Uri.TryCreate(signatureUrl, UriKind.Absolute, out var signatureUri) || signatureUri.Scheme != Uri.UriSchemeHttps) return null;
         try
@@ -55,6 +57,6 @@ public sealed record UpdateTrustConfiguration(
         {
             return null;
         }
-        return new UpdateTrustConfiguration(keyId, key, metadataUri, signatureUri, "stable");
+        return new UpdateTrustConfiguration(keyId, key, metadataUri, signatureUri, channel);
     }
 }

@@ -14,12 +14,6 @@ function Copy-InstallerSource([string]$Source, [string]$Target) {
     Copy-Item -LiteralPath (Get-ChildItem -LiteralPath $Source -Filter *.wixproj | Select-Object -First 1).FullName -Destination $Target
 }
 
-function Set-PackageVersion([string]$PackagePath, [string]$Version) {
-    [xml]$xml = Get-Content -LiteralPath $PackagePath -Raw
-    $xml.Wix.Package.Version = $Version
-    $xml.Save($PackagePath)
-}
-
 function Build-Fixture([string]$Version) {
     $target = Join-Path $fixtureRoot $Version
     if (Test-Path -LiteralPath $target) {
@@ -29,16 +23,15 @@ function Build-Fixture([string]$Version) {
     $server = Join-Path $target 'Server'
     Copy-InstallerSource $sourceDesktop $desktop
     Copy-InstallerSource $sourceServer $server
-    Set-PackageVersion (Join-Path $desktop 'Package.wxs') $Version
-    Set-PackageVersion (Join-Path $server 'Package.wxs') $Version
     $output = Join-Path $target 'packages'
     New-Item -ItemType Directory -Path $output -Force | Out-Null
 
     $desktopPublish = Split-Path -Parent $paths.DesktopExe
     $managerPublish = Split-Path -Parent $paths.ManagerExe
-    & dotnet @('build',(Join-Path $desktop 'VyNode.Desktop.wixproj'),'-c','Release',"-p:ClientPublish=$desktopPublish",'-o',$output) | Write-Host
+    $mediaTools = Join-Path $paths.Root 'artifacts\windows\media-tools\payload'
+    & dotnet @('build',(Join-Path $desktop 'VyNode.Desktop.wixproj'),'-c','Release',"-p:PackageVersion=$Version","-p:ClientPublish=$desktopPublish",'-o',$output) | Write-Host
     if ($LASTEXITCODE -ne 0) { throw "Desktop acceptance MSI $Version failed." }
-    & dotnet @('build',(Join-Path $server 'VyNode.Server.wixproj'),'-c','Release',"-p:ServerExe=$($paths.ServerExe)","-p:ServerManagerPublish=$managerPublish",'-o',$output) | Write-Host
+    & dotnet @('build',(Join-Path $server 'VyNode.Server.wixproj'),'-c','Release',"-p:PackageVersion=$Version","-p:ServerExe=$($paths.ServerExe)","-p:ServerManagerPublish=$managerPublish","-p:MediaToolsPayload=$mediaTools",'-o',$output) | Write-Host
     if ($LASTEXITCODE -ne 0) { throw "Server acceptance MSI $Version failed." }
 
     $inventory = Get-ChildItem -LiteralPath $output -Filter *.msi | ForEach-Object {

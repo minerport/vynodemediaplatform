@@ -9,9 +9,12 @@ jobs:
       - uses: actions/setup-go@v5
         with: { go-version: '1.24.x', cache: true }
       - run: test -z "$(gofmt -l server connect)"
+      - run: go vet ./...
       - run: go test ./...
       - run: go build ./server/cmd/vynode-server
+      - run: go build ./connect/cmd/vynode-connect
       - run: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/vynode-server.exe ./server/cmd/vynode-server
+      - run: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/vynode-connect.exe ./connect/cmd/vynode-connect
   web:
     runs-on: ubuntu-latest
     steps:
@@ -41,18 +44,13 @@ jobs:
         with: { distribution: temurin, java-version: '17', cache: gradle }
       - uses: android-actions/setup-android@v3
       - run: chmod +x gradlew
-      - run: ./gradlew testDebugUnitTest lintDebug assembleDebug assembleRelease
+      - run: ./gradlew test lint assembleDebug assembleRelease assembleAndroidTest
       - uses: actions/upload-artifact@v4
         with:
           name: vynode-android-apks
           path: apps/android/app/build/outputs/apk/**/*.apk
   windows:
     runs-on: windows-latest
-      env:
-        WINDOWS_SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
-        WINDOWS_SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
-        WINDOWS_UPDATE_PUBLIC_KEY_ID: ${{ vars.WINDOWS_UPDATE_PUBLIC_KEY_ID }}
-        WINDOWS_UPDATE_PUBLIC_KEY_SPKI: ${{ vars.WINDOWS_UPDATE_PUBLIC_KEY_SPKI }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -60,44 +58,9 @@ jobs:
       - uses: actions/setup-go@v5
         with: { go-version: '1.24.x', cache: true }
       - run: dotnet test apps/windows/VyNode.Windows.Tests/VyNode.Windows.Tests.csproj -c Release -p:Platform=x64
-        - name: Validate signed-release update trust configuration
-          if: ${{ env.WINDOWS_SIGNING_CERT_BASE64 != '' }}
-          shell: pwsh
-          run: |
-            if (-not $env:WINDOWS_UPDATE_PUBLIC_KEY_ID -or -not $env:WINDOWS_UPDATE_PUBLIC_KEY_SPKI) {
-              throw 'Signed Windows release builds require the pinned update public key ID and SPKI.'
-            }
-        - run: ./deploy/windows/build-client.ps1
+      - run: ./deploy/windows/build-client.ps1
       - run: ./deploy/windows/build-server-installer.ps1
-      - name: Authenticode sign Windows release artifacts
-        if: ${{ env.WINDOWS_SIGNING_CERT_BASE64 != '' }}
-        shell: pwsh
-        run: |
-          $certificate = Join-Path $env:RUNNER_TEMP 'vynode-signing.pfx'
-          try {
-            [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:WINDOWS_SIGNING_CERT_BASE64))
-            $payloads = @(
-              'artifacts/windows/desktop/win-x64/VyNode.exe',
-              'artifacts/windows/vynode-server.exe',
-              'artifacts/windows/server-manager/VyNode.ServerManager.exe'
-            )
-            foreach ($target in $payloads) {
-              & signtool sign /fd SHA256 /td SHA256 /tr https://timestamp.digicert.com /f $certificate /p $env:WINDOWS_SIGNING_CERT_PASSWORD $target
-              if ($LASTEXITCODE -ne 0) { throw "Signing failed for $target." }
-              & signtool verify /pa /v $target
-              if ($LASTEXITCODE -ne 0) { throw "Signature verification failed for $target." }
-            }
-            dotnet build deploy/windows/installer/Desktop/VyNode.Desktop.wixproj -c Release -p:ClientPublish="$pwd\artifacts\windows\desktop\win-x64" -o artifacts/windows/installer
-            dotnet build deploy/windows/installer/Server/VyNode.Server.wixproj -c Release -p:ServerExe="$pwd\artifacts\windows\vynode-server.exe" -p:ServerManagerPublish="$pwd\artifacts\windows\server-manager" -o artifacts/windows/installer
-            foreach ($target in (Get-ChildItem artifacts/windows/installer -Filter '*.msi' | Select-Object -ExpandProperty FullName)) {
-              & signtool sign /fd SHA256 /td SHA256 /tr https://timestamp.digicert.com /f $certificate /p $env:WINDOWS_SIGNING_CERT_PASSWORD $target
-              if ($LASTEXITCODE -ne 0) { throw "Signing failed for $target." }
-              & signtool verify /pa /v $target
-              if ($LASTEXITCODE -ne 0) { throw "Signature verification failed for $target." }
-            }
-          } finally {
-            Remove-Item -LiteralPath $certificate -Force -ErrorAction SilentlyContinue
-          }
+      - run: ./deploy/windows/release/New-ReleaseBundle.ps1 -ReleaseType development
       - uses: actions/upload-artifact@v4
         with:
           name: vynode-windows-unsigned
@@ -105,3 +68,56 @@ jobs:
             artifacts/windows/desktop/win-x64/**
             artifacts/windows/vynode-server.exe
             artifacts/windows/installer/*.msi
+            artifacts/windows/release/**
+  windows-production-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    environment: windows-production
+    env:
+      WINDOWS_SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
+      WINDOWS_SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
+      WINDOWS_SIGNING_EXPECTED_SUBJECT: ${{ vars.WINDOWS_SIGNING_EXPECTED_SUBJECT }}
+      WINDOWS_SIGNING_EXPECTED_THUMBPRINT: ${{ vars.WINDOWS_SIGNING_EXPECTED_THUMBPRINT }}
+      WINDOWS_SIGNING_TIMESTAMP_URL: ${{ vars.WINDOWS_SIGNING_TIMESTAMP_URL }}
+      WINDOWS_UPDATE_PUBLIC_KEY_ID: ${{ vars.WINDOWS_UPDATE_PUBLIC_KEY_ID }}
+      WINDOWS_UPDATE_PUBLIC_KEY_SPKI: ${{ vars.WINDOWS_UPDATE_PUBLIC_KEY_SPKI }}
+      WINDOWS_UPDATE_SIGNING_PRIVATE_KEY_BASE64: ${{ secrets.WINDOWS_UPDATE_SIGNING_PRIVATE_KEY_BASE64 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: '10.0.x' }
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.24.x', cache: true }
+      - name: Require production trust inputs
+        shell: pwsh
+        run: |
+          foreach ($name in 'WINDOWS_SIGNING_CERT_BASE64','WINDOWS_SIGNING_CERT_PASSWORD','WINDOWS_SIGNING_EXPECTED_SUBJECT','WINDOWS_SIGNING_EXPECTED_THUMBPRINT','WINDOWS_SIGNING_TIMESTAMP_URL','WINDOWS_UPDATE_PUBLIC_KEY_ID','WINDOWS_UPDATE_PUBLIC_KEY_SPKI','WINDOWS_UPDATE_SIGNING_PRIVATE_KEY_BASE64') {
+            if (-not [Environment]::GetEnvironmentVariable($name)) { throw "Production release requires $name." }
+          }
+      - name: Resolve tagged release version
+        id: version
+        shell: pwsh
+        run: "'version=' + $env:GITHUB_REF_NAME.TrimStart('v') | Out-File -FilePath $env:GITHUB_OUTPUT -Append"
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - run: ./deploy/windows/build-client.ps1 -Version '${{ steps.version.outputs.version }}' -Channel stable
+      - run: ./deploy/windows/build-server-installer.ps1 -Version '${{ steps.version.outputs.version }}'
+      - name: Sign and verify Windows release artifacts
+        shell: pwsh
+        run: ./deploy/windows/release/Sign-WindowsRelease.ps1 -Version '${{ steps.version.outputs.version }}'
+      - name: Generate signed update metadata from final signed MSI
+        shell: pwsh
+        run: ./deploy/windows/release/New-ProductionUpdateMetadata.ps1 -Channel stable -Version '${{ steps.version.outputs.version }}' -PackageUrl "https://updates.vynode.app/windows/stable/VyNode-Desktop-${{ steps.version.outputs.version }}.msi"
+      - run: ./deploy/windows/release/New-ReleaseBundle.ps1 -ReleaseType production -Version '${{ steps.version.outputs.version }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vynode-windows-production
+          path: |
+            artifacts/windows/desktop/win-x64/**
+            artifacts/windows/vynode-server.exe
+            artifacts/windows/installer/*.msi
+            artifacts/windows/release/**

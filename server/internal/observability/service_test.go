@@ -36,6 +36,31 @@ func testService(t *testing.T) (*Service, *sql.DB, func()) {
 	return s, store.DB, func() { s.Close(); store.Close() }
 }
 
+func TestDashboardReportsMediaToolIdentity(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	store, err := database.Open(ctx, filepath.Join(dir, "config"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err = store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	s, err := New(store.DB, SystemInfo{InstanceID: "server-test", FFmpeg: "ffmpeg-test", FFmpegSource: "managed", FFprobe: "ffprobe-test", FFprobeSource: "custom", StartedAt: time.Now()}, Paths{Config: dir}, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	dashboard, err := s.Dashboard(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dashboard.FFmpegPath != "ffmpeg-test" || dashboard.FFmpegSource != "managed" || dashboard.FFprobePath != "ffprobe-test" || dashboard.FFprobeSource != "custom" {
+		t.Fatalf("unexpected media-tool diagnostics: %+v", dashboard)
+	}
+}
+
 func TestSSRFPolicy(t *testing.T) {
 	s, _, done := testService(t)
 	defer done()

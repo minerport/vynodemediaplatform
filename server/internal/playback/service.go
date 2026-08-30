@@ -661,9 +661,14 @@ func (s *Service) hlsFile(ctx context.Context, sessionID, token, name string, ow
 				}
 				return nil
 			}(), sessionID)
-			_, _ = s.db.Exec("UPDATE playback_pipeline_instances SET state=?,ended_at=?,error_code=? WHERE playback_session_id=? AND mode=? AND state='RUNNING'", pipelineState, now, func() any {
+			_, _ = s.db.Exec("UPDATE playback_pipeline_instances SET state=?,ended_at=?,error_code=?,safe_diagnostic=? WHERE playback_session_id=? AND mode=? AND state='RUNNING'", pipelineState, now, func() any {
 				if runErr != nil {
 					return "FFMPEG_EXITED"
+				}
+				return nil
+			}(), func() any {
+				if runErr != nil {
+					return truncate(runErr.Error(), 32768)
 				}
 				return nil
 			}(), sessionID, a.Mode)

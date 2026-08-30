@@ -30,8 +30,10 @@ public sealed partial class MainWindow : Window
         if (_started) return;
         _started = true;
         var cached = await _state.ReadAsync();
-        if (cached is null) { ShowSignIn(); return; }
-        var globalRefresh = _credentials.ReadGlobal(cached.User.Id);
+        var globalCached = await _state.ReadGlobalAsync();
+        var globalUser = globalCached?.User ?? cached?.User;
+        var globalDevice = globalCached?.Device ?? cached?.Device;
+        var globalRefresh = globalUser is null ? null : _credentials.ReadGlobal(globalUser.Id);
         if (globalRefresh is not null)
         {
             try
@@ -39,18 +41,20 @@ public sealed partial class MainWindow : Window
                 var connect = new Services.ConnectClient();
                 var login = await connect.RefreshAsync(globalRefresh, CancellationToken.None);
                 _credentials.SaveGlobal(login.User.Id, login.RefreshToken);
+                await _state.SaveGlobalAsync(login.User, globalDevice!);
                 var servers = await connect.ServersAsync(login.AccessToken, CancellationToken.None);
-                var selected = servers.FirstOrDefault(x => x.Id == cached.Server.Id) ?? servers.FirstOrDefault();
+                var selected = servers.FirstOrDefault(x => x.Id == cached?.Server.Id) ?? servers.FirstOrDefault();
                 if (selected is not null)
                 {
-                    ShowShell(await new Services.SessionBootstrapper().ConnectAsync(new Models.GlobalContext(login, servers, cached.Device), selected, CancellationToken.None));
+                    ShowShell(await new Services.SessionBootstrapper().ConnectAsync(new Models.GlobalContext(login, servers, globalDevice!), selected, CancellationToken.None));
                     return;
                 }
-                ShowZeroServer(new Models.GlobalContext(login, servers, cached.Device));
+                ShowZeroServer(new Models.GlobalContext(login, servers, globalDevice!));
                 return;
             }
             catch { /* Connect outage: continue with the identity-verified local session. */ }
         }
+        if (cached is null) { ShowSignIn(); return; }
         try
         {
             var server = new Services.ServerClient();

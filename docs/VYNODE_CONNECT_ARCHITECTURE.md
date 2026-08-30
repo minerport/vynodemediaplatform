@@ -1,7 +1,7 @@
-# VyNode Connect Architecture (Future)
+# VyNode Connect architecture
 
-VyNode Connect is not implemented and is never required for local login, playback, administration, invitation acceptance, pairing, or manual remote access.
+VyNode Connect is implemented as an optional global identity, invitation, and server-discovery control plane. It is never required for direct local login, playback, administration, local pairing, or manual remote access.
 
-A future `ServerDiscoveryProvider` boundary may order known current endpoints, LAN discovery, manual remote endpoints, and optional Connect registration. Clients must compare the stable server installation ID before sending saved credentials to an endpoint that unexpectedly identifies as another server.
+Clients order known current endpoints, LAN/manual fallbacks, and Connect registration while comparing the stable server installation ID before sending saved credentials to an endpoint that unexpectedly identifies as another server.
 
-An optional registration service may know account identity, server ID, endpoints, and device authorization state. It should not receive library contents, media metadata, or watch history. Relay is a reserved future connection type only; no relay traffic or fake Connect calls exist.
+Connect stores account identity, server ID, endpoints, invitations, relationships, and device authorization state. It does not receive library contents, media metadata, watch history, or media traffic. Relay remains unimplemented.

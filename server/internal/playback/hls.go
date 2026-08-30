@@ -105,6 +105,7 @@ func (h *HLSManager) Ensure(r HLSRequest) error {
 	h.mu.Unlock()
 	args := h.args(r, dir)
 	cmd := exec.CommandContext(ctx, h.path, args...)
+	cmd.Dir = dir
 	configureProcess(cmd)
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
@@ -117,12 +118,14 @@ func (h *HLSManager) Ensure(r HLSRequest) error {
 	}
 	go func() {
 		s := bufio.NewScanner(stderr)
+		diagnostic := &boundedBuffer{max: 32768}
 		var encoded, speed float64
 		var outputBytes int64
 		for s.Scan() {
 			line := s.Text()
 			key, value, ok := strings.Cut(line, "=")
 			if !ok {
+				_, _ = diagnostic.Write([]byte(line + "\n"))
 				continue
 			}
 			switch key {
@@ -143,6 +146,13 @@ func (h *HLSManager) Ensure(r HLSRequest) error {
 			}
 		}
 		err := cmd.Wait()
+		if err != nil {
+			safe := redact(diagnostic.String(), r.SourcePath)
+			safe = redact(safe, dir)
+			if safe != "" {
+				err = fmt.Errorf("ffmpeg failed: %s", safe)
+			}
+		}
 		outputBytes = h.outputSize(dir)
 		if r.Progress != nil {
 			r.Progress(encoded, speed, outputBytes)

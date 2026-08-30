@@ -11,6 +11,7 @@ public enum UpdateRuntimeState
     Verifying,
     ReadyToInstall,
     LaunchingInstaller,
+    ReadyToRelaunch,
     Error
 }
 
@@ -18,7 +19,7 @@ public sealed record VerifiedUpdatePackage(UpdateManifest Manifest, string Local
 
 public interface IInstallerLauncher
 {
-    void LaunchMsi(string absoluteMsiPath);
+    Task<int> LaunchMsiAsync(string absoluteMsiPath, CancellationToken ct);
 }
 
 public sealed class WindowsMsiInstallerLauncher : IInstallerLauncher
@@ -36,8 +37,12 @@ public sealed class WindowsMsiInstallerLauncher : IInstallerLauncher
         return start;
     }
 
-    public void LaunchMsi(string absoluteMsiPath) =>
-        _ = Process.Start(CreateStartInfo(absoluteMsiPath)) ?? throw new InvalidOperationException("Windows Installer did not start.");
+    public async Task<int> LaunchMsiAsync(string absoluteMsiPath, CancellationToken ct)
+    {
+        using var process = Process.Start(CreateStartInfo(absoluteMsiPath)) ?? throw new InvalidOperationException("Windows Installer did not start.");
+        await process.WaitForExitAsync(ct);
+        return process.ExitCode;
+    }
 }
 
 public sealed class UpdateInstallerHandoff(string managedPackageRoot, IInstallerLauncher launcher)
@@ -60,6 +65,7 @@ public sealed class UpdateInstallerHandoff(string managedPackageRoot, IInstaller
         await using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
             await UpdateVerifier.VerifyPackageAsync(stream, package.Manifest.Sha256, ct);
 
-        launcher.LaunchMsi(path);
+        var exitCode = await launcher.LaunchMsiAsync(path, ct);
+        if (exitCode != 0) throw new InvalidOperationException($"Windows Installer returned {exitCode}.");
     }
 }

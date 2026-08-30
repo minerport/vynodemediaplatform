@@ -496,7 +496,8 @@ export const api = {
     call<{ events: AuditEvent[]; limit: number; offset: number }>(
       `/api/v1/admin/audit?limit=25&offset=${offset}`,
     ),
-  libraries: () => call<{ libraries: Library[] }>("/api/v1/libraries"),
+  libraries: () => call<{ libraries: Library[] | null }>("/api/v1/libraries")
+    .then((result) => ({ ...result, libraries: result.libraries ?? [] })),
   library: (id: string) => call<Library>(`/api/v1/libraries/${id}`),
   createLibrary: (body: unknown) =>
     call<Library>("/api/v1/libraries", {
@@ -528,11 +529,12 @@ export const api = {
       method: "DELETE",
     }),
   items: (id: string, offset = 0) =>
-    call<{ items: MediaFile[] }>(
+    call<{ items: MediaFile[] | null }>(
       `/api/v1/libraries/${id}/items?limit=50&offset=${offset}`,
-    ),
+    ).then((result) => ({ ...result, items: result.items ?? [] })),
   mediaFile: (id: string) => call<MediaFile>(`/api/v1/media/files/${id}`),
-  movies: () => call<{ movies: Movie[] }>("/api/v1/movies"),
+  movies: () => call<{ movies: Movie[] | null }>("/api/v1/movies")
+    .then((result) => ({ ...result, movies: result.movies ?? [] })),
   search: (query: string) =>
     call<{ movies: Movie[] | null; shows: Show[] | null }>(
       `/api/v1/search?q=${encodeURIComponent(query)}`,

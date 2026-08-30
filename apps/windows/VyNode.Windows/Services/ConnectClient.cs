@@ -9,7 +9,7 @@ public sealed class ConnectClient
     private readonly HttpClient _http;
     public ConnectClient()
     {
-        var configured = Environment.GetEnvironmentVariable("VYNODE_CONNECT_URL") ?? "https://connect.vynode.app";
+        var configured = Environment.GetEnvironmentVariable("VYNODE_CONNECT_URL") ?? "https://connect.vynodehub.com";
         _http = new HttpClient { BaseAddress = new Uri(configured.TrimEnd('/') + "/"), Timeout = TimeSpan.FromSeconds(15) };
     }
 

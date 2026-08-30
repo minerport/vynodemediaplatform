@@ -741,7 +741,7 @@ func (s *Service) Cleanup(ctx context.Context) error {
 	return e
 }
 func (s *Service) Dashboard(ctx context.Context) (Dashboard, error) {
-	d := Dashboard{Version: s.info.Version, Commit: s.info.Commit, ServerName: s.info.ServerName, InstanceID: s.info.InstanceID, DatabaseType: s.info.DatabaseType, FFmpegVersion: commandVersion(s.info.FFmpeg), FFprobeVersion: commandVersion(s.info.FFprobe), Metrics: s.Metrics(ctx), Health: map[string]int{}}
+	d := Dashboard{Version: s.info.Version, Commit: s.info.Commit, ServerName: s.info.ServerName, InstanceID: s.info.InstanceID, DatabaseType: s.info.DatabaseType, FFmpegVersion: commandVersion(s.info.FFmpeg), FFprobeVersion: commandVersion(s.info.FFprobe), FFmpegPath: s.info.FFmpeg, FFmpegSource: s.info.FFmpegSource, FFprobePath: s.info.FFprobe, FFprobeSource: s.info.FFprobeSource, Metrics: s.Metrics(ctx), Health: map[string]int{}}
 	var e error
 	if d.Libraries, e = s.LibraryStats(ctx); e != nil {
 		return d, e
